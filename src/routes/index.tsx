@@ -295,10 +295,6 @@ function StartPage() {
 
   return (
     <div className="today-page">
-      <div
-    className="mx-auto my-8 h-32 w-32 bg-white"
-    aria-label="Test white box"
-  />
       <header className="today-head">
         <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
           {daypart()} · {weekdayLabel()}
