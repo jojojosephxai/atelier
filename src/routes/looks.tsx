@@ -130,7 +130,7 @@ function LooksPage() {
                         id: look.id,
                         name: look.name,
                         garmentIds: look.garmentIds,
-                        extraIds: look.extraIds,
+                        extraIds: [],
                         occasion: look.occasion,
                         notes: look.notes,
                         source: look.source,
@@ -159,7 +159,13 @@ function LooksPage() {
                   </NativeSelect>
                   <Button
                     variant="danger"
-                    onClick={() => removeLook(look.id)}
+                    onClick={() => {
+                      const ok = window.confirm(
+                        `Remove “${look.name}” from Looks?`,
+                      );
+                      if (!ok) return;
+                      removeLook(look.id);
+                    }}
                   >
                     Remove
                   </Button>

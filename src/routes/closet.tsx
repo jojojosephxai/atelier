@@ -176,7 +176,7 @@ function ClosetPage() {
           </p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
             {garments.length === 0
-              ? "Add a coat, a pair of shoes, a shirt. The stylist dresses from what you actually own."
+              ? "Add a coat, a pair of shoes, a shirt. Today builds looks from what you actually own."
               : "Try another collection, or clear search."}
           </p>
           {garments.length === 0 ? (

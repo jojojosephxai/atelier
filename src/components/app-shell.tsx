@@ -135,6 +135,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   disabled={!hydrated}
                   className="text-danger"
                   onSelect={() => {
+                    const ok = window.confirm(
+                      "Clear everything on this device? Closet, looks, and grooming will be wiped. Export a pack first if you want them back.",
+                    );
+                    if (!ok) return;
                     clearAll();
                     toast("Closet cleared");
                   }}
