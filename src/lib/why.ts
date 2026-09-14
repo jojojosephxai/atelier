@@ -1,5 +1,5 @@
 import { richWhy } from "./rich-why.ts";
-import type { Climate, Extra, Garment } from "./types";
+import type { Climate, Extra, Garment } from "./types.ts";
 
 function sceneOf(occasion: string) {
   const o = occasion.toLowerCase();

@@ -1,7 +1,12 @@
-import { hexToHsl, isNeutralHex } from "./utils";
-import { comboKey, isCoat, isShorts, lookCoreKey } from "./look";
-import { isCampusJacket, isGymLayer, lookEligible, lookName } from "./board-set";
-import { whyLookWorks } from "./why";
+import { hexToHsl, isNeutralHex } from "./utils.ts";
+import { comboKey, isCoat, isShorts, lookCoreKey } from "./look.ts";
+import {
+  isCampusJacket,
+  isGymLayer,
+  lookEligible,
+  lookName,
+} from "./board-set.ts";
+import { whyLookWorks } from "./why.ts";
 import type {
   Brief,
   Climate,
@@ -11,8 +16,8 @@ import type {
   GarmentCategory,
   Season,
   SuggestedLook,
-} from "./types";
-import { FORMALITY_RANK } from "./types";
+} from "./types.ts";
+import { FORMALITY_RANK } from "./types.ts";
 
 const STOP = new Set([
   "the",
@@ -344,13 +349,12 @@ export function composeLooks(
   const skip = new Set(opts?.skipKeys ?? []);
   const banned = new Set<string>();
   const words = tokens(brief.description);
-  const extrasFor: Extra[] = [];
   const picked: SuggestedLook[] = [];
 
   for (let n = 0; n < 8 && picked.length < 3; n++) {
     const look = composeOne(
       garments,
-      extrasFor,
+      extras,
       brief,
       words,
       banned,
@@ -520,20 +524,22 @@ function composeOne(
     used.add(feet.id);
   }
 
-  const acc = gymOn
-    ? undefined
-    : pickBest(
-        open("accessories").filter((g) => !/umbrella/i.test(g.name)),
-        used,
-        brief,
-        words,
-        assembled,
-        worn,
-        liked,
-      );
-  if (acc) {
-    assembled.push(acc);
-    used.add(acc.id);
+  if (!gymOn) {
+    const rainOn = brief.climate === "rain";
+    const accPool = open("accessories").filter((g) => {
+      const isUmbrella = /umbrella/i.test(g.name);
+      return rainOn ? true : !isUmbrella;
+    });
+    const umbrella = rainOn
+      ? accPool.find((g) => /umbrella/i.test(g.name))
+      : undefined;
+    const acc =
+      umbrella ??
+      pickBest(accPool, used, brief, words, assembled, worn, liked);
+    if (acc) {
+      assembled.push(acc);
+      used.add(acc.id);
+    }
   }
 
   if (
@@ -586,18 +592,18 @@ function composeOne(
     0,
   );
   score += paletteScore(assembled.map((p) => p.hex));
-  score += paletteScore(assembled.map((p) => p.hex));
   if (!hasFeet) score -= 30;
   if (!hasBody) score -= 28;
   if (outerNeed === "required" && !hasOuter) score -= 24;
   if (outerNeed === "skip" && hasOuter) score -= 12;
   if (shortsOn && assembled.some(isCoat)) score -= 80;
 
-  const copy = rationaleFor(assembled, [], brief, incomplete);
+  const chosenExtras = pickExtras(extrasFor, brief, words);
+  const copy = rationaleFor(assembled, chosenExtras, brief, incomplete);
   return {
     name: copy.name,
     garmentIds: assembled.map((p) => p.id),
-    extraIds: [],
+    extraIds: chosenExtras.map((e) => e.id),
     score,
     rationale: copy.rationale,
     climateNotes: copy.climateNotes,
