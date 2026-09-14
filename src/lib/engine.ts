@@ -143,10 +143,6 @@ function itemText(g: Garment): string {
   return `${g.name} ${g.brand} ${g.material} ${g.notes} ${g.colorName} ${g.category} ${(g.tags ?? []).join(" ")}`;
 }
 
-function extraText(e: Extra): string {
-  return `${e.name} ${e.brand} ${e.notes} ${e.kind} ${e.family ?? ""} ${(e.tags ?? []).join(" ")}`;
-}
-
 function scoreGarment(
   g: Garment,
   brief: Brief,
@@ -227,62 +223,6 @@ function pickBest(
   return best;
 }
 
-function evening(desc: string): boolean {
-  return /\b(evening|night|dinner|date|gala|cocktail)\b/.test(desc.toLowerCase());
-}
-
-/** Fragrance + skincare (+ grooming) picks for a brief. Used by compose and Today kits. */
-export function suggestExtras(extras: Extra[], brief: Brief): Extra[] {
-  return pickExtras(extras, brief, tokens(brief.description));
-}
-
-function pickExtras(
-  extras: Extra[],
-  brief: Brief,
-  words: string[],
-): Extra[] {
-  const chosen: Extra[] = [];
-  const frags = extras.filter((e) => e.kind === "fragrance");
-  let bestFrag: Extra | undefined;
-  let best = -20;
-  for (const e of frags) {
-    let s =
-      climateScore(e.climate, brief.climate) +
-      Math.max(...e.formality.map((f) => formalityScore(f, brief.occasion))) +
-      keywordScore(extraText(e), words);
-    if (e.family === "citrus" || e.family === "fresh") {
-      if (brief.climate === "hot" || brief.climate === "warm") s += 8;
-    }
-    if (e.family === "woody" || e.family === "amber" || e.family === "leather") {
-      if (brief.climate === "cool" || brief.climate === "cold") s += 8;
-      if (brief.occasion === "formal" || brief.occasion === "business") s += 4;
-    }
-    if (s > best) {
-      best = s;
-      bestFrag = e;
-    }
-  }
-  if (bestFrag) chosen.push(bestFrag);
-
-  const night = evening(brief.description);
-  const skin = extras
-    .filter((e) => e.kind === "skincare")
-    .filter((e) => {
-      if (!e.slot || e.slot === "both") return true;
-      return night ? e.slot === "pm" : e.slot === "am";
-    })
-    .sort((a, b) => (a.step ?? 99) - (b.step ?? 99));
-  chosen.push(...skin);
-
-  const groom = extras.filter((e) => e.kind === "grooming");
-  if (groom.length) {
-    const g =
-      groom.find((x) => x.formality.includes(brief.occasion)) ?? groom[0];
-    if (g) chosen.push(g);
-  }
-  return chosen;
-}
-
 function rationaleFor(
   pieces: Garment[],
   extras: Extra[],
@@ -353,21 +293,19 @@ export function composeLooks(
   const liked = new Set(opts?.likedIds ?? []);
   const skip = new Set(opts?.skipKeys ?? []);
   const banned = new Set<string>();
-  const usedExtras = new Set<string>();
   const words = tokens(brief.description);
   const picked: SuggestedLook[] = [];
+  void extras; // Grooming stays on its own tab — never mix into outfit looks.
 
   for (let n = 0; n < 8 && picked.length < 3; n++) {
     const look = composeOne(
       garments,
-      extras,
       brief,
       words,
       banned,
       worn,
       liked,
       skip,
-      usedExtras,
       !picked.some((l) =>
         l.garmentIds.some(
           (id) => garments.find((g) => g.id === id)?.category === "bags",
@@ -376,7 +314,6 @@ export function composeLooks(
     );
     if (!look) continue;
     picked.push(look);
-    for (const id of look.extraIds) usedExtras.add(id);
     const gymOn =
       brief.occasion === "athletic" ||
       /\b(gym|pe|workout)\b/.test(brief.description.toLowerCase());
@@ -398,14 +335,12 @@ export function composeLooks(
 
 function composeOne(
   garments: Garment[],
-  extrasFor: Extra[],
   brief: Brief,
   words: string[],
   banned: Set<string>,
   worn: Set<string>,
   liked: Set<string>,
   skip: Set<string>,
-  usedExtras: Set<string>,
   allowBag: boolean,
 ): SuggestedLook | undefined {
   const gymOn =
@@ -607,16 +542,12 @@ function composeOne(
   if (outerNeed === "skip" && hasOuter) score -= 12;
   if (shortsOn && assembled.some(isCoat)) score -= 80;
 
-  const chosenExtras = pickExtras(
-    extrasFor.filter((e) => !usedExtras.has(e.id) || e.kind === "skincare"),
-    brief,
-    words,
-  );
-  const copy = rationaleFor(assembled, chosenExtras, brief, incomplete);
+  // Fragrance / skincare live on Grooming — never attach them to outfit looks.
+  const copy = rationaleFor(assembled, [], brief, incomplete);
   return {
     name: copy.name,
     garmentIds: assembled.map((p) => p.id),
-    extraIds: chosenExtras.map((e) => e.id),
+    extraIds: [],
     score,
     rationale: copy.rationale,
     climateNotes: copy.climateNotes,

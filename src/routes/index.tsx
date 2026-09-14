@@ -213,7 +213,7 @@ function StartPage() {
     wearToday({
       name: lookName(pieces, routine),
       garmentIds: pieces.map((g) => g.id),
-      extraIds: look.extraIds,
+      extraIds: [],
       occasion: scene.label,
       notes: look.rationale,
       source: look.source,
@@ -253,7 +253,7 @@ function StartPage() {
     return addLook({
       name: lookName(pieces, routine),
       garmentIds: pieces.map((g) => g.id),
-      extraIds: look.extraIds,
+      extraIds: [],
       occasion: scene.label,
       notes: look.rationale,
       source: look.source,

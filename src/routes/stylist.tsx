@@ -69,7 +69,7 @@ function StylistPage() {
       wearToday({
         name: look.name,
         garmentIds: look.garmentIds,
-        extraIds: look.extraIds,
+        extraIds: [],
         occasion: FORMALITY_LABELS[occasion],
         notes: look.rationale,
         source: look.source,
@@ -80,7 +80,7 @@ function StylistPage() {
     addLook({
       name: look.name,
       garmentIds: look.garmentIds,
-      extraIds: look.extraIds,
+      extraIds: [],
       occasion: FORMALITY_LABELS[occasion],
       notes: look.rationale,
       source: look.source,
