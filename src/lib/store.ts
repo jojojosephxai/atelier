@@ -345,17 +345,31 @@ export const useWardrobe = create<WardrobeState>()(
   ),
 );
 
+const STALE_LOOK_NAME =
+  /^(hall pass|quiet period|warm hall|monday cut|weekend grain)$/i;
+const STALE_LOOK_NOTES =
+  /default weekday|tee feels too easy|heat-day campus|coffee, errands|linen open, shorts|tie only if the room/i;
+
 function ensureSampleLooks(state: {
   garments: Garment[];
   looks: Look[];
 }): Look[] {
   if (!state.garments.some((g) => g.id === "g_grey_tee")) return state.looks;
-  const needed = createSampleCloset().looks.filter((l) =>
-    l.id.startsWith("l_school"),
+  const needed = createSampleCloset().looks;
+  const canon = new Map(needed.map((l) => [l.id, l]));
+  const looks = state.looks.map((l) => {
+    const next = canon.get(l.id);
+    if (!next) return l;
+    if (!STALE_LOOK_NAME.test(l.name) && !STALE_LOOK_NOTES.test(l.notes)) {
+      return l;
+    }
+    return { ...l, name: next.name, notes: next.notes };
+  });
+  const have = new Set(looks.map((l) => l.id));
+  const missing = needed.filter(
+    (l) => l.id.startsWith("l_school") && !have.has(l.id),
   );
-  const have = new Set(state.looks.map((l) => l.id));
-  const missing = needed.filter((l) => !have.has(l.id));
-  return missing.length ? [...missing, ...state.looks] : state.looks;
+  return missing.length ? [...missing, ...looks] : looks;
 }
 
 function ensureSampleGarments(garments: Garment[]): Garment[] {

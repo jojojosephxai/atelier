@@ -13,7 +13,7 @@ export const WHY_INSIGHTS: WhyInsight[] = [
 
 /** Phrases and shells that read as design-system jargon, not fashion copy. */
 const JARGON =
-  /\b(value contrast|loud break|texture break|mute (?:value )?shift|supporting breaks|as the ground|frames a softer|sharper outer|softer body|one mute register|depthRead|psychologically|comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer|firmer face|easier hang|keep the stack|upper stack|dark weight)\b|\bstac(?:k|ked)\b/i;
+  /\b(value contrast|different values|second story|loud break|texture break|mute (?:value )?shift|supporting breaks|as the ground|frames a softer|sharper outer|softer body|one mute register|depthRead|psychologically|comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer|firmer face|easier hang|keep the stack|upper stack|dark weight)\b|\bstac(?:k|ked)\b/i;
 
 /** Forced diagnostic templates — ban entirely. */
 const FORBIDDEN_SHELL =
@@ -23,7 +23,7 @@ const FIT_RE =
   /\b(relaxed|oversized|fitted|straight(?:-leg)?|slim|cropped|tailored|loose|boxy|skinny|wide(?:-leg)?|knee[- ]length|baggy|flared|bootcut|taper(?:ed)?|boyfriend)\b/i;
 
 const GARMENT_WORD =
-  /\b(jacket|coat|shell|hoodie|zip|tee|shirt|knit|crew|polo|jeans?|chinos?|trousers|joggers?|shorts?|sneakers?|trainers?|boots?|shoes|cargos?|skirt|blazer|parka|sweater)\b/i;
+  /\b(jacket|coat|shell|hoodie|zip|tee|shirt|knit|crew|polo|jeans?|chinos?|trousers|joggers?|shorts?|sneakers?|trainers?|boots?|shoes|cargos?|skirt|blazer|parka|sweater|harrington)\b/i;
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const c = hex.replace("#", "");
@@ -81,25 +81,26 @@ function shoesOf(pieces: Garment[]) {
   return pieces.find((g) => g.category === "footwear");
 }
 
-function blobOf(g: Garment): string {
-  return `${g.name} ${g.notes} ${g.material} ${g.brand ?? ""}`.toLowerCase();
-}
-
-/** Role from messy import names — never the last junk word of "jacket 2". */
+/**
+ * Role from name (+ material for thin imports) — never notes.
+ * Seed/import notes often say "not a blazer" / "under a coat", which would
+ * otherwise hallucinate blazer/coat as the garment class.
+ */
 function roleNoun(g: Garment): string {
-  const n = blobOf(g);
+  const n = `${g.name} ${g.material ?? ""} ${g.brand ?? ""}`.toLowerCase();
   if (/rain\s*shell|\bshell\b|windbreaker/.test(n)) return "shell";
   if (/puffer|parka|down vest/.test(n)) return "parka";
   if (/trench|overcoat|topcoat|polo coat|\bcoat\b/.test(n)) return "coat";
   if (/blazer|suit jacket/.test(n)) return "blazer";
-  if (/harrington|bomber|field jacket|denim jacket|\bjacket\b/.test(n)) {
-    return "jacket";
-  }
+  if (/harrington/.test(n)) return "harrington";
+  if (/bomber|field jacket|denim jacket|\bjacket\b/.test(n)) return "jacket";
   if (/hoodie|hooded/.test(n)) return "hoodie";
   if (/quarter[-\s]?zip|half[-\s]?zip|\bzip\b/.test(n)) return "zip";
   if (/sweatshirt|pullover|jumper/.test(n)) return "sweatshirt";
-  if (/cardigan|sweater|merino|\bcrew\b/.test(n)) return "knit";
-  if (/\bpolo\b/.test(n)) return "knit";
+  if (/\bcrew\b/.test(n)) return "crew";
+  if (/cardigan|sweater/.test(n)) return "sweater";
+  if (/merino|\bknit\b/.test(n)) return "knit";
+  if (/\bpolo\b/.test(n)) return "polo";
   if (/\btee\b|t-shirt|tshirt/.test(n)) return "tee";
   if (/oxford|button[- ]down|\bshirt\b/.test(n)) return "shirt";
   if (/\b501\b|\b511\b|\blevi/.test(n) || /jean/.test(n)) return "jeans";
@@ -209,6 +210,7 @@ function scrub(line: string): string {
   if (/firmer face|easier hang underneath|keep the stack layered/i.test(t)) {
     return "";
   }
+  if (/different values|second story/i.test(t)) return "";
   if (
     /navy rain shell|navy polo knit|navy harrington|black merino crew|indigo denim jacket|ivory linen shirt/i.test(
       t,
@@ -230,7 +232,7 @@ function outerInnerStructure(outer: Garment, top: Garment): string {
   if (o === "shell") {
     return `The shell adds structure while the ${t} beneath falls more softly`;
   }
-  if (/knit|tee|hoodie|sweatshirt|zip/.test(t)) {
+  if (/knit|crew|sweater|tee|hoodie|sweatshirt|zip|polo/.test(t)) {
     return `The ${o} holds a crisper outer line while the ${t} underneath stays smoother`;
   }
   if (/shirt/.test(t)) {
@@ -292,10 +294,10 @@ function paletteSentence(
       const upper = outer && top && sameFamily(outer, top)
         ? `${colorOf(outer || top!).toLowerCase()} through the ${roleNoun(outer ?? top!)}${top && outer ? ` and ${roleNoun(top)}` : ""}`
         : outer && top
-          ? `${coloredRole(outer)} over ${coloredRole(top)}`
-          : coloredRole(outer ?? top!);
+          ? `the ${coloredRole(outer)} over the ${coloredRole(top)}`
+          : `the ${coloredRole(outer ?? top!)}`;
       const low = bottom
-        ? `, then ${coloredRole(bottom)} below`
+        ? ` and ${coloredRole(bottom)} below`
         : "";
       return scrub(
         `${colorOf(shoes)} at the ${roleNoun(shoes)} lifts the line after ${upper}${low}`,
@@ -389,7 +391,9 @@ function paletteSentence(
           : `${oc} holds the ${roleNoun(outer)} while ${tc.toLowerCase()} opens through the ${roleNoun(top)}`;
         return scrub(withFeel(core, feel));
       }
-      const core = `${coloredRole(outer)} and ${coloredRole(top)} sit in different values${
+      const darker = lightOf(outer) <= lightOf(top) ? outer : top;
+      const lighter = darker === outer ? top : outer;
+      const core = `${coloredRole(darker)} reads darker against ${coloredRole(lighter)}${
         bottom ? `, with ${coloredRole(bottom)} steadying the lower half` : ""
       }`;
       return scrub(withFeel(core, feel));
@@ -525,7 +529,7 @@ function structureSentence(
   if (insight === "accent") {
     if (shoes && bottom) {
       return scrub(
-        `${roleNoun(bottom).charAt(0).toUpperCase()}${roleNoun(bottom).slice(1)} keep the hang clean so the ${roleNoun(shoes)} read as the finish, not a second story`,
+        `${roleNoun(bottom).charAt(0).toUpperCase()}${roleNoun(bottom).slice(1)} keep the hang clean so the ${roleNoun(shoes)} read as the finish`,
       );
     }
     if (shoes) {

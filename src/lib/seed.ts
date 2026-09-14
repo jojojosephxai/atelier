@@ -1,5 +1,8 @@
+import { lookName } from "./board-set";
 import { SAMPLE_IMAGES } from "./media";
-import type { Extra, Garment, Look } from "./types";
+import { insightForIndex, richWhy } from "./rich-why.ts";
+import type { RoutineId } from "./routines.ts";
+import type { Climate, Extra, Garment, Look } from "./types";
 
 const t = Date.now();
 
@@ -41,6 +44,39 @@ export const SAMPLE_TAGS: Record<string, string[]> = {
   g_gym_trainer: ["Gym"],
   g_olive_gym_short: ["Gym"],
 };
+
+function sampleLook(
+  garments: Garment[],
+  spec: {
+    id: string;
+    garmentIds: string[];
+    extraIds: string[];
+    occasion: string;
+    routine: RoutineId;
+    climate: Climate;
+    insight: number;
+    createdAt: number;
+  },
+): Look {
+  const pieces = spec.garmentIds
+    .map((id) => garments.find((g) => g.id === id))
+    .filter((g): g is Garment => Boolean(g));
+  return {
+    id: spec.id,
+    name: lookName(pieces, spec.routine),
+    garmentIds: spec.garmentIds,
+    extraIds: spec.extraIds,
+    occasion: spec.occasion,
+    notes: richWhy(
+      pieces,
+      spec.routine,
+      spec.climate,
+      insightForIndex(spec.insight),
+    ),
+    source: "manual",
+    createdAt: spec.createdAt,
+  };
+}
 
 export function createSampleCloset(): {
   garments: Garment[];
@@ -730,9 +766,8 @@ export function createSampleCloset(): {
   ];
 
   const looks: Look[] = [
-    {
+    sampleLook(garments, {
       id: "l_school",
-      name: "Hall pass",
       garmentIds: [
         "g_stone_jacket",
         "g_grey_tee",
@@ -743,13 +778,13 @@ export function createSampleCloset(): {
       ],
       extraIds: ["e_cleanser", "e_moist", "e_spf", "e_bergamot"],
       occasion: "School",
-      notes: "The default weekday. Jacket if the morning is cool; tee if it isn't.",
-      source: "manual",
+      routine: "school",
+      climate: "cool",
+      insight: 0,
       createdAt: t - 99,
-    },
-    {
+    }),
+    sampleLook(garments, {
       id: "l_school_knit",
-      name: "Quiet period",
       garmentIds: [
         "g_navy_knit",
         "g_olive_chino",
@@ -758,13 +793,13 @@ export function createSampleCloset(): {
       ],
       extraIds: ["e_cleanser", "e_moist", "e_spf", "e_bergamot"],
       occasion: "School",
-      notes: "Knit and chinos when the tee feels too easy.",
-      source: "manual",
+      routine: "school",
+      climate: "mild",
+      insight: 1,
       createdAt: t - 98,
-    },
-    {
+    }),
+    sampleLook(garments, {
       id: "l_school_linen",
-      name: "Warm hall",
       garmentIds: [
         "g_ivory_linen",
         "g_sand_short",
@@ -772,13 +807,13 @@ export function createSampleCloset(): {
       ],
       extraIds: ["e_cleanser", "e_moist", "e_spf", "e_bergamot"],
       occasion: "School",
-      notes: "Heat-day campus. Linen open, shorts, loafers.",
-      source: "manual",
+      routine: "school",
+      climate: "hot",
+      insight: 2,
       createdAt: t - 97,
-    },
-    {
+    }),
+    sampleLook(garments, {
       id: "l_monday",
-      name: "Monday cut",
       garmentIds: [
         "g_navy_coat",
         "g_white_oxford",
@@ -789,13 +824,13 @@ export function createSampleCloset(): {
       ],
       extraIds: ["e_cleanser", "e_vitc", "e_moist", "e_spf", "e_vetiver"],
       occasion: "Office",
-      notes: "The default weekday. Tie only if the room requires it.",
-      source: "manual",
+      routine: "out",
+      climate: "cool",
+      insight: 0,
       createdAt: t - 100,
-    },
-    {
+    }),
+    sampleLook(garments, {
       id: "l_weekend",
-      name: "Weekend grain",
       garmentIds: [
         "g_camel_coat",
         "g_ivory_linen",
@@ -805,10 +840,11 @@ export function createSampleCloset(): {
       ],
       extraIds: ["e_cleanser", "e_moist", "e_spf", "e_bergamot"],
       occasion: "Weekend",
-      notes: "Coffee, errands, a train.",
-      source: "manual",
+      routine: "weekend",
+      climate: "mild",
+      insight: 1,
       createdAt: t - 101,
-    },
+    }),
   ];
 
   return {

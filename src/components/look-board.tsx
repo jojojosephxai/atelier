@@ -3,8 +3,8 @@ import { memo, useEffect, useState } from "react";
 import { ImagePlus, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { toast } from "sonner";
 import { LookGrid } from "@/components/look-grid";
-import { lookName } from "@/lib/board-set";
-import { describeLook } from "@/lib/describe-look";
+import { displayLookName } from "@/lib/board-set";
+import { displayLookWhy } from "@/lib/describe-look";
 import { compressImage } from "@/lib/image";
 import { lookCoreKey } from "@/lib/look";
 import { votePolarity } from "@/lib/look-votes";
@@ -106,10 +106,13 @@ export const LookBoard = memo(function LookBoard({
   const voteKey = lookCoreKey(garmentIds, garments);
   const vote = votePolarity(lookVotes?.[voteKey]);
   const routine = routineOf(`${occasion} ${name} ${rationale}`);
-  const title = name.trim() ? name : lookName(pieces, routine);
-  const why = rationale?.trim()
-    ? rationale.trim()
-    : describeLook(pieces, { routine, climate }, garmentIds.join("").length % 4);
+  const title = displayLookName(name, pieces, routine);
+  const why = displayLookWhy(
+    rationale,
+    pieces,
+    { routine, climate },
+    garmentIds.join("").length % 4,
+  );
 
   function castVote(next: 1 | -1) {
     const cur = { ...(lookVotes ?? {}) };

@@ -172,3 +172,25 @@ export function describeLook(
 export function lookCopyWordCount(text: string): number {
   return wordCount(text);
 }
+
+const PLACEHOLDER_WHY =
+  /default weekday|tee feels too easy|heat-day campus|coffee, errands|linen open, shorts|tie only if the room/i;
+
+function isPieceList(text: string): boolean {
+  const parts = text.split(/\s·\s/);
+  return parts.length >= 2 && !/[.!?]$/.test(text);
+}
+
+/** Skip leftover demo lines and garment laundry lists. */
+export function displayLookWhy(
+  notes: string | undefined,
+  pieces: Garment[],
+  ctx: LookContext,
+  variety = 0,
+): string {
+  const n = notes?.trim() ?? "";
+  if (!n || PLACEHOLDER_WHY.test(n) || isPieceList(n)) {
+    return describeLook(pieces, ctx, variety);
+  }
+  return n;
+}

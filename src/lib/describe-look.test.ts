@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   clampLookCopy,
   copyFromFacts,
+  displayLookWhy,
   lookCopyWordCount,
   lookFacts,
 } from "./describe-look.ts";
@@ -71,5 +72,43 @@ describe("copyFromFacts", () => {
     ];
     const facts = lookFacts(pieces, { routine: "school", climate: "rain" });
     assert.equal(facts.climateNote, "");
+  });
+});
+
+describe("displayLookWhy", () => {
+  it("replaces leftover demo copy with a visual why", () => {
+    const pieces = [
+      g({
+        id: "g_stone_jacket",
+        name: "Stone field jacket",
+        category: "outerwear",
+        colorName: "Stone",
+        hex: "#a39e93",
+        material: "Cotton",
+      }),
+      g({
+        id: "g_grey_tee",
+        name: "Heather grey tee",
+        category: "tops",
+        colorName: "Grey",
+        hex: "#8a8a8a",
+        material: "Cotton",
+      }),
+      g({
+        id: "g_indigo_jean",
+        name: "Dark indigo jeans",
+        category: "bottoms",
+        colorName: "Indigo",
+        hex: "#2c3a6a",
+        material: "Denim",
+      }),
+    ];
+    const out = displayLookWhy(
+      "The default weekday. Jacket if the morning is cool; tee if it isn't.",
+      pieces,
+      { routine: "school", climate: "cool" },
+    );
+    assert.doesNotMatch(out, /default weekday|hall pass/i);
+    assert.match(out, /tonal|mute|texture|cotton|indigo|grey|stone/i);
   });
 });

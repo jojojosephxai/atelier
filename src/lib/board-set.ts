@@ -300,6 +300,9 @@ function shortName(g: Garment): string {
   return words.length > 3 ? words.slice(-2).join(" ") : n;
 }
 
+const PLACEHOLDER_LOOK_NAME =
+  /^(hall pass|quiet period|warm hall|monday cut|weekend grain|look\s*\d+)$/i;
+
 /** Distinct title from the actual pieces — never "Black Black ceremony". */
 export function lookName(pieces: Garment[], routine: RoutineId): string {
   const layer = pieces.find(isGymLayer);
@@ -313,6 +316,17 @@ export function lookName(pieces: Garment[], routine: RoutineId): string {
   if (outer && top) return `${shortName(outer)} + ${shortName(top)}`;
   if (top && bottom) return `${shortName(top)} + ${shortName(bottom)}`;
   return top?.name || outer?.name || pieces[0]?.name || "Look";
+}
+
+/** Saved demo titles that never named the clothes. */
+export function displayLookName(
+  name: string,
+  pieces: Garment[],
+  routine: RoutineId,
+): string {
+  const t = name.trim();
+  if (!t || PLACEHOLDER_LOOK_NAME.test(t)) return lookName(pieces, routine);
+  return t;
 }
 
 /** Today card title from the board pieces and day. Never an AI caption. */

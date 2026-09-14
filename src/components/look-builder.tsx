@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/field";
 import { lookHasBody } from "@/lib/look";
+import { lookName } from "@/lib/board-set";
+import { describeLook } from "@/lib/describe-look";
 import { pieceSrc } from "@/lib/media";
 import { useWardrobe } from "@/lib/store";
 import type { Extra, Garment, GarmentCategory } from "@/lib/types";
@@ -27,7 +29,7 @@ export function LookBuilderDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { garments, extras, addLook } = useWardrobe();
+  const { garments, extras, addLook, profile } = useWardrobe();
   const [name, setName] = useState("");
   const [picks, setPicks] = useState<Partial<Record<GarmentCategory, string>>>(
     {},
@@ -66,15 +68,16 @@ export function LookBuilderDialog({
       toast("Need a top and bottoms — or a dress");
       return;
     }
-    const title =
-      name.trim() ||
-      `${selected[0]?.colorName ?? "My"} look`;
+    const title = name.trim() || lookName(selected, "school");
     addLook({
       name: title,
       garmentIds: selected.map((g) => g.id),
       extraIds: extrasList.map((e) => e.id),
       occasion: "Custom",
-      notes: selected.map((g) => g.name).join(" · "),
+      notes: describeLook(selected, {
+        routine: "school",
+        climate: profile.defaultClimate,
+      }),
       source: "manual",
     });
     toast("Look saved");
@@ -106,7 +109,7 @@ export function LookBuilderDialog({
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Hall pass, first period…"
+                placeholder="Field jacket + grey tee"
               />
             </Field>
             {BUILD_CATS.map((cat) => {
