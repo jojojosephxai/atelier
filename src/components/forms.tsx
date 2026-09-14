@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, NativeSelect, Textarea } from "@/components/ui/field";
 import { FASHION_PALETTE } from "@/lib/colors";
-import { cutBudget, cutGarment } from "@/lib/cutout";
+import { cutBudget, cutGarment, cutProduct } from "@/lib/cutout";
 import { deletePhoto, putPhoto } from "@/lib/photo-db";
 import { uid } from "@/lib/utils";
 import type {
@@ -544,7 +544,7 @@ export function ExtraFormDialog({
     setCutting(true);
     setCutStatus("Cutting…");
     try {
-      const blob = await cutGarment(file, setCutStatus, ac.signal, true);
+      const blob = await cutProduct(file, setCutStatus, ac.signal);
       if (ac.signal.aborted || cutJob.current !== job) {
         throw new DOMException("Aborted", "AbortError");
       }
