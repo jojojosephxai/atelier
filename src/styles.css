@@ -793,6 +793,33 @@ html[data-theme="dark"] {
     .piece-grid[data-count="5"] > .kit-tile:nth-child(n + 4) {
       grid-column: auto;
     }
+
+    /* Looks tab only: four pieces stay a centered 2x2, not 3+1. */
+    .looks-cols .piece-grid[data-count="4"] {
+      --piece-gap: 0.62rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: calc(66.666% - var(--piece-gap) / 3);
+      margin-inline: auto;
+      align-self: center;
+      padding-inline: 0;
+    }
+
+    /* Looks tab only: five pieces keep 3-up, with shoes + extra centered. */
+    .looks-cols .piece-grid[data-count="5"] {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .looks-cols .piece-grid[data-count="5"] > .kit-tile {
+      grid-column: span 2;
+    }
+
+    .looks-cols .piece-grid[data-count="5"] > .kit-tile:nth-child(4) {
+      grid-column: 2 / span 2;
+    }
+
+    .looks-cols .piece-grid[data-count="5"] > .kit-tile:nth-child(5) {
+      grid-column: 4 / span 2;
+    }
   }
 
   .look-card {
@@ -915,6 +942,31 @@ html[data-theme="dark"] {
     .looks-cols .piece-grid[data-count="5"] > .kit-tile,
     .looks-cols .piece-grid[data-count="5"] > .kit-tile:nth-child(n + 4) {
       grid-column: auto;
+    }
+
+    .looks-cols .piece-grid[data-count="4"] {
+      --piece-gap: 0.55rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: calc(66.666% - var(--piece-gap) / 3);
+      margin-inline: auto;
+      align-self: center;
+      padding-inline: 0;
+    }
+
+    .looks-cols .piece-grid[data-count="5"] {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .looks-cols .piece-grid[data-count="5"] > .kit-tile {
+      grid-column: span 2;
+    }
+
+    .looks-cols .piece-grid[data-count="5"] > .kit-tile:nth-child(4) {
+      grid-column: 2 / span 2;
+    }
+
+    .looks-cols .piece-grid[data-count="5"] > .kit-tile:nth-child(5) {
+      grid-column: 4 / span 2;
     }
 
     .looks-cols .kit-tile .outfit-studio {
