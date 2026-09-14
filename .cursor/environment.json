@@ -1,6 +1,6 @@
 {
   "name": "Atelier",
-  "install": "npm ci",
+  "install": "npm install",
   "terminals": [
     {
       "name": "dev",
