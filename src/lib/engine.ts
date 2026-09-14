@@ -1,7 +1,12 @@
-import { hexToHsl, isNeutralHex } from "./utils";
-import { comboKey, isCoat, isShorts, lookCoreKey } from "./look";
-import { isCampusJacket, isGymLayer, lookEligible, lookName } from "./board-set";
-import { whyLookWorks } from "./why";
+import { hexToHsl, isNeutralHex } from "./utils.ts";
+import { comboKey, isCoat, isShorts, lookCoreKey } from "./look.ts";
+import {
+  isCampusJacket,
+  isGymLayer,
+  lookEligible,
+  lookName,
+} from "./board-set.ts";
+import { whyLookWorks } from "./why.ts";
 import type {
   Brief,
   Climate,
@@ -11,8 +16,8 @@ import type {
   GarmentCategory,
   Season,
   SuggestedLook,
-} from "./types";
-import { FORMALITY_RANK } from "./types";
+} from "./types.ts";
+import { FORMALITY_RANK } from "./types.ts";
 
 const STOP = new Set([
   "the",
@@ -138,10 +143,6 @@ function itemText(g: Garment): string {
   return `${g.name} ${g.brand} ${g.material} ${g.notes} ${g.colorName} ${g.category} ${(g.tags ?? []).join(" ")}`;
 }
 
-function extraText(e: Extra): string {
-  return `${e.name} ${e.brand} ${e.notes} ${e.kind} ${e.family ?? ""} ${(e.tags ?? []).join(" ")}`;
-}
-
 function scoreGarment(
   g: Garment,
   brief: Brief,
@@ -222,57 +223,6 @@ function pickBest(
   return best;
 }
 
-function evening(desc: string): boolean {
-  return /\b(evening|night|dinner|date|gala|cocktail)\b/.test(desc.toLowerCase());
-}
-
-function pickExtras(
-  extras: Extra[],
-  brief: Brief,
-  words: string[],
-): Extra[] {
-  const chosen: Extra[] = [];
-  const frags = extras.filter((e) => e.kind === "fragrance");
-  let bestFrag: Extra | undefined;
-  let best = -20;
-  for (const e of frags) {
-    let s =
-      climateScore(e.climate, brief.climate) +
-      Math.max(...e.formality.map((f) => formalityScore(f, brief.occasion))) +
-      keywordScore(extraText(e), words);
-    if (e.family === "citrus" || e.family === "fresh") {
-      if (brief.climate === "hot" || brief.climate === "warm") s += 8;
-    }
-    if (e.family === "woody" || e.family === "amber" || e.family === "leather") {
-      if (brief.climate === "cool" || brief.climate === "cold") s += 8;
-      if (brief.occasion === "formal" || brief.occasion === "business") s += 4;
-    }
-    if (s > best) {
-      best = s;
-      bestFrag = e;
-    }
-  }
-  if (bestFrag) chosen.push(bestFrag);
-
-  const night = evening(brief.description);
-  const skin = extras
-    .filter((e) => e.kind === "skincare")
-    .filter((e) => {
-      if (!e.slot || e.slot === "both") return true;
-      return night ? e.slot === "pm" : e.slot === "am";
-    })
-    .sort((a, b) => (a.step ?? 99) - (b.step ?? 99));
-  chosen.push(...skin);
-
-  const groom = extras.filter((e) => e.kind === "grooming");
-  if (groom.length) {
-    const g =
-      groom.find((x) => x.formality.includes(brief.occasion)) ?? groom[0];
-    if (g) chosen.push(g);
-  }
-  return chosen;
-}
-
 function rationaleFor(
   pieces: Garment[],
   extras: Extra[],
@@ -344,13 +294,12 @@ export function composeLooks(
   const skip = new Set(opts?.skipKeys ?? []);
   const banned = new Set<string>();
   const words = tokens(brief.description);
-  const extrasFor: Extra[] = [];
   const picked: SuggestedLook[] = [];
+  void extras; // Grooming stays on its own tab — never mix into outfit looks.
 
   for (let n = 0; n < 8 && picked.length < 3; n++) {
     const look = composeOne(
       garments,
-      extrasFor,
       brief,
       words,
       banned,
@@ -386,7 +335,6 @@ export function composeLooks(
 
 function composeOne(
   garments: Garment[],
-  extrasFor: Extra[],
   brief: Brief,
   words: string[],
   banned: Set<string>,
@@ -520,20 +468,22 @@ function composeOne(
     used.add(feet.id);
   }
 
-  const acc = gymOn
-    ? undefined
-    : pickBest(
-        open("accessories").filter((g) => !/umbrella/i.test(g.name)),
-        used,
-        brief,
-        words,
-        assembled,
-        worn,
-        liked,
-      );
-  if (acc) {
-    assembled.push(acc);
-    used.add(acc.id);
+  if (!gymOn) {
+    const rainOn = brief.climate === "rain";
+    const accPool = open("accessories").filter((g) => {
+      const isUmbrella = /umbrella/i.test(g.name);
+      return rainOn ? true : !isUmbrella;
+    });
+    const umbrella = rainOn
+      ? accPool.find((g) => /umbrella/i.test(g.name))
+      : undefined;
+    const acc =
+      umbrella ??
+      pickBest(accPool, used, brief, words, assembled, worn, liked);
+    if (acc) {
+      assembled.push(acc);
+      used.add(acc.id);
+    }
   }
 
   if (
@@ -586,13 +536,13 @@ function composeOne(
     0,
   );
   score += paletteScore(assembled.map((p) => p.hex));
-  score += paletteScore(assembled.map((p) => p.hex));
   if (!hasFeet) score -= 30;
   if (!hasBody) score -= 28;
   if (outerNeed === "required" && !hasOuter) score -= 24;
   if (outerNeed === "skip" && hasOuter) score -= 12;
   if (shortsOn && assembled.some(isCoat)) score -= 80;
 
+  // Fragrance / skincare live on Grooming — never attach them to outfit looks.
   const copy = rationaleFor(assembled, [], brief, incomplete);
   return {
     name: copy.name,

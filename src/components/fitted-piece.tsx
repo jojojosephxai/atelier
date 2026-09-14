@@ -45,11 +45,17 @@ export function FittedPiece({
     <img
       ref={ref}
       src={shown}
-      alt=""
+      alt={alt}
       draggable={false}
       loading={eager ? "eager" : "lazy"}
       decoding={eager ? "sync" : "async"}
       fetchPriority={eager ? "high" : "auto"}
+      onLoad={() => {
+        const img = ref.current;
+        if (!img?.naturalWidth) return;
+        setReady(true);
+        onRatio?.(img.naturalWidth / img.naturalHeight);
+      }}
       onError={() => {
         const bare = shown.split("?")[0];
         if (bare && bare !== shown) {
@@ -59,8 +65,9 @@ export function FittedPiece({
         setFailed(true);
       }}
       className={cn(
-        "size-full object-contain object-center",
-        ready ? "opacity-100" : "opacity-0",
+        // Stay visible even before load — opacity-0 left blank tiles in Preview.
+        "size-full object-contain object-center transition-opacity duration-200",
+        ready ? "opacity-100" : "opacity-80",
         className,
       )}
     />

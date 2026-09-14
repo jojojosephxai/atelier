@@ -69,7 +69,7 @@ function StylistPage() {
       wearToday({
         name: look.name,
         garmentIds: look.garmentIds,
-        extraIds: look.extraIds,
+        extraIds: [],
         occasion: FORMALITY_LABELS[occasion],
         notes: look.rationale,
         source: look.source,
@@ -80,7 +80,7 @@ function StylistPage() {
     addLook({
       name: look.name,
       garmentIds: look.garmentIds,
-      extraIds: look.extraIds,
+      extraIds: [],
       occasion: FORMALITY_LABELS[occasion],
       notes: look.rationale,
       source: look.source,
@@ -99,7 +99,8 @@ function StylistPage() {
         </h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
           Pick a scene for an instant set, or describe the day when you want
-          something specific. Runs on this device from your closet.
+          something specific. Everything runs on this device from your closet —
+          nothing is sent to a server.
         </p>
       </header>
 
@@ -247,7 +248,8 @@ function StylistPage() {
         </section>
       ) : (
         <p className="text-sm text-muted">
-          Fill the brief, then Compose looks. Suggestions stay on this device.
+          Fill the brief, then Compose looks. Clothes and notes stay on this
+          device — fragrance and skincare live under Grooming.
         </p>
       )}
     </div>

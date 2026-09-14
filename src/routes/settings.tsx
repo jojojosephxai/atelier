@@ -138,7 +138,8 @@ function SettingsPage() {
         </h2>
         <p className="max-w-xl text-sm text-muted">
           Download or restore this closet on this device. Photos stay in the
-          pack — not a store, no account.
+          pack — not a store, no account. Export before “Clear everything” if
+          you want a backup.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button type="button" disabled={busy} onClick={() => void onExport()}>

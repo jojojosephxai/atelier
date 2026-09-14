@@ -9,7 +9,7 @@ import { lookName } from "@/lib/board-set";
 import { describeLook } from "@/lib/describe-look";
 import { pieceSrc } from "@/lib/media";
 import { useWardrobe } from "@/lib/store";
-import type { Extra, Garment, GarmentCategory } from "@/lib/types";
+import type { Garment, GarmentCategory } from "@/lib/types";
 import { CATEGORY_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -29,13 +29,12 @@ export function LookBuilderDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { garments, extras, addLook, profile } = useWardrobe();
+  const { garments, addLook, profile } = useWardrobe();
   const [name, setName] = useState("");
   const [picks, setPicks] = useState<Partial<Record<GarmentCategory, string>>>(
     {},
   );
   const [accessoryIds, setAccessoryIds] = useState<string[]>([]);
-  const [scentId, setScentId] = useState<string>("");
 
   const selected = useMemo(() => {
     const core = BUILD_CATS.filter((c) => c !== "accessories")
@@ -46,9 +45,6 @@ export function LookBuilderDialog({
       .filter((g): g is Garment => Boolean(g));
     return [...core, ...extrasWear];
   }, [garments, picks, accessoryIds]);
-  const scents = extras.filter((e) => e.kind === "fragrance");
-  const scent = scents.find((e) => e.id === scentId);
-  const extrasList: Extra[] = scent ? [scent] : [];
 
   function toggle(cat: GarmentCategory, id: string) {
     if (cat === "accessories") {
@@ -72,7 +68,7 @@ export function LookBuilderDialog({
     addLook({
       name: title,
       garmentIds: selected.map((g) => g.id),
-      extraIds: extrasList.map((e) => e.id),
+      extraIds: [],
       occasion: "Custom",
       notes: describeLook(selected, {
         routine: "school",
@@ -84,7 +80,6 @@ export function LookBuilderDialog({
     setName("");
     setPicks({});
     setAccessoryIds([]);
-    setScentId("");
     onOpenChange(false);
   }
 
@@ -99,7 +94,7 @@ export function LookBuilderDialog({
           <div className="overflow-hidden rounded-lg">
             <Mannequin
               garments={selected}
-              extras={extrasList}
+              extras={[]}
               compact
               layoutKey="draft"
             />
@@ -156,32 +151,6 @@ export function LookBuilderDialog({
                 </div>
               );
             })}
-            {scents.length ? (
-              <div>
-                <p className="mb-1.5 text-xs font-medium tracking-wide text-muted">
-                  Scent
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {scents.map((e) => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      onClick={() =>
-                        setScentId((id) => (id === e.id ? "" : e.id))
-                      }
-                      className={cn(
-                        "h-9 rounded-full px-3 text-xs",
-                        scentId === e.id
-                          ? "bg-accent text-accent-fg"
-                          : "bg-raised text-muted shadow-[var(--shadow-border)]",
-                      )}
-                    >
-                      {e.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
             <Button
               onClick={save}
               disabled={!lookHasBody(selected)}

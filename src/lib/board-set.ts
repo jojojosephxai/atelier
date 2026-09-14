@@ -1,6 +1,6 @@
-import type { Climate, Garment, GarmentCategory } from "./types";
-import { FORMALITIES } from "./types";
-import type { RoutineId } from "./routines";
+import type { Climate, Garment, GarmentCategory } from "./types.ts";
+import { FORMALITIES } from "./types.ts";
+import type { RoutineId } from "./routines.ts";
 import { richWhy } from "./rich-why.ts";
 
 const ORDER: GarmentCategory[] = [

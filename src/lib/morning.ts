@@ -55,7 +55,7 @@ function asSuggested(look: Look): SuggestedLook {
   return {
     name: look.name,
     garmentIds: look.garmentIds,
-    extraIds: look.extraIds,
+    extraIds: [],
     score: 80,
     rationale: look.notes,
     climateNotes: "",

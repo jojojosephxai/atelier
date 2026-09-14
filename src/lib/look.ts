@@ -1,4 +1,4 @@
-import type { Garment, Look, LookVoteMap, SuggestedLook } from "./types";
+import type { Garment, Look, LookVoteMap, SuggestedLook } from "./types.ts";
 
 const BODY = new Set(["tops", "dresses"]);
 const BOTTOM = new Set(["bottoms"]);
