@@ -1,8 +1,55 @@
+/**
+ * On-device cutout pipeline.
+ *
+ * Stages (always, in order):
+ *   1. shrinkForCut   — bound input size
+ *   2. removeBackground — @imgly/background-removal
+ *   3. refineMatte    — harden alpha, kill halo, defringe RGB
+ *   4. keepMainSubject — drop floating debris (skipped when corners still opaque)
+ *   5. stripHanger    — garment mode only
+ *   6. cropIsolate    — tight crop + encode PNG
+ *
+ * Modes:
+ *   garment — clothes on hangers / floors
+ *   product — grooming bottles / jars (protect labels, harder edges)
+ */
+
 const CUT_CAP = 8;
-const CUT_KEY = "atelier-cut-v1";
+const CUT_KEY = "atelier-cut-v2";
 const cache = new Map<string, string>();
 const COLD_MS = 60_000;
-const WARM_MS = 25_000;
+const WARM_MS = 30_000;
+
+export type CutMode = "garment" | "product";
+
+type CutProfile = {
+  maxEdge: number;
+  /** Mid-alpha below this becomes transparent. */
+  alphaKill: number;
+  /** Mid-alpha at or above this becomes solid (after kill). */
+  alphaSolid: number;
+  /** Erode opaque alpha by this many px before rebuild (kills fringe). */
+  edgeTrim: number;
+  stripHanger: boolean;
+};
+
+const PROFILES: Record<CutMode, CutProfile> = {
+  garment: {
+    maxEdge: 1280,
+    alphaKill: 56,
+    alphaSolid: 200,
+    edgeTrim: 1,
+    stripHanger: true,
+  },
+  product: {
+    maxEdge: 1600,
+    alphaKill: 72,
+    alphaSolid: 220,
+    edgeTrim: 2,
+    stripHanger: false,
+  },
+};
+
 let cutterWarm = false;
 let preloadP: Promise<void> | null = null;
 
@@ -67,17 +114,37 @@ export function needsCutout(src: string): boolean {
   return true;
 }
 
+/** Closet / garment photos. */
 export async function cutGarment(
   file: File,
   onProgress?: (msg: string) => void,
   signal?: AbortSignal,
   keepLabel?: boolean,
 ): Promise<Blob> {
+  // keepLabel was the old bottle flag — map it so callers that still pass it work.
+  return runCut(file, keepLabel ? "product" : "garment", onProgress, signal);
+}
+
+/** Grooming bottles / jars — harder edges, labels kept. */
+export async function cutProduct(
+  file: File,
+  onProgress?: (msg: string) => void,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  return runCut(file, "product", onProgress, signal);
+}
+
+async function runCut(
+  file: File,
+  mode: CutMode,
+  onProgress?: (msg: string) => void,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const profile = PROFILES[mode];
   const budget = cutBudget();
-  if (!budget.ok) {
-    throw new Error("Cut limit reached for today");
-  }
+  if (!budget.ok) throw new Error("Cut limit reached for today");
   if (signal?.aborted) throw abortErr("Aborted");
+
   const local = new AbortController();
   const onAbort = () => local.abort();
   signal?.addEventListener("abort", onAbort);
@@ -85,6 +152,7 @@ export async function cutGarment(
   const died = () => {
     if (local.signal.aborted) throw abortErr("Cut timed out");
   };
+
   try {
     onProgress?.("Loading cutter…");
     died();
@@ -92,9 +160,11 @@ export async function cutGarment(
     died();
     const { removeBackground } = await import("@imgly/background-removal");
     died();
+
     onProgress?.("Preparing photo…");
-    const source = await shrinkForCut(file);
+    const source = await shrinkForCut(file, profile.maxEdge);
     died();
+
     onProgress?.("Knocking out the floor…");
     const cut = await Promise.race([
       removeBackground(source, {
@@ -113,11 +183,12 @@ export async function cutGarment(
     ]);
     cutterWarm = true;
     died();
-    onProgress?.("Isolating piece…");
+
+    onProgress?.("Cleaning edges…");
     await new Promise((r) => setTimeout(r, 0));
     died();
     const isolated = await Promise.race([
-      finishCut(cut, keepLabel),
+      finishCut(cut, profile),
       abortPromise(local.signal),
     ]);
     died();
@@ -146,9 +217,35 @@ function abortPromise(signal: AbortSignal): Promise<never> {
   });
 }
 
-async function finishCut(cut: Blob, keepLabel?: boolean): Promise<Blob> {
-  const stripped = keepLabel ? cut : await stripHangerBlob(cut);
-  return isolateRgba(stripped, keepLabel);
+async function finishCut(cut: Blob, profile: CutProfile): Promise<Blob> {
+  const bmp = await createImageBitmap(await ensurePng(cut));
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) {
+    bmp.close();
+    throw new Error("Could not read cut");
+  }
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  refineMatte(data, profile);
+  if (!cornersStillFloor(data)) {
+    keepMainSubject(data);
+  }
+  if (profile.stripHanger) {
+    stripHanger(data);
+    // Second pass: hanger fill can leave soft pixels — harden again.
+    refineMatte(data, {
+      ...profile,
+      edgeTrim: 0,
+      alphaKill: Math.max(40, profile.alphaKill - 16),
+    });
+  }
+  ctx.putImageData(data, 0, 0);
+  return cropIsolate(canvas, data);
 }
 
 async function ensurePng(blob: Blob): Promise<Blob> {
@@ -181,10 +278,9 @@ function blobFromCanvas(canvas: HTMLCanvasElement): Promise<Blob | null> {
   });
 }
 
-async function shrinkForCut(file: File): Promise<Blob> {
+async function shrinkForCut(file: File, maxEdge: number): Promise<Blob> {
   const bmp = await createImageBitmap(file);
-  const max = 1280;
-  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
   const w = Math.max(1, Math.round(bmp.width * scale));
   const h = Math.max(1, Math.round(bmp.height * scale));
   const canvas = document.createElement("canvas");
@@ -196,6 +292,8 @@ async function shrinkForCut(file: File): Promise<Blob> {
     return file;
   }
   ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bmp, 0, 0, w, h);
   bmp.close();
   const blob = await new Promise<Blob | null>((resolve) =>
@@ -204,23 +302,199 @@ async function shrinkForCut(file: File): Promise<Blob> {
   return blob ?? file;
 }
 
-async function stripHangerBlob(cut: Blob): Promise<Blob> {
-  const bmp = await createImageBitmap(cut);
-  const canvas = document.createElement("canvas");
-  canvas.width = bmp.width;
-  canvas.height = bmp.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    bmp.close();
-    return cut;
+/**
+ * Harden the matte so tiles never show fuzzy halos:
+ * kill weak alpha, solidify the rest, trim edge fringe, defringe RGB.
+ */
+export function refineMatte(img: ImageData, profile: CutProfile): void {
+  const px = img.data;
+  const w = img.width;
+  const h = img.height;
+  const n = w * h;
+
+  // 1) Soft white / gray matte → transparent (never eat solid opaque whites).
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3];
+    if (a === 0 || a >= 248) continue;
+    const r = px[i];
+    const g = px[i + 1];
+    const b = px[i + 2];
+    const mx = Math.max(r, g, b);
+    const mn = Math.min(r, g, b);
+    const sat = mx === 0 ? 0 : (mx - mn) / mx;
+    if (mx / 255 > 0.78 && sat < 0.12 && a < profile.alphaSolid) {
+      px[i + 3] = 0;
+    }
   }
-  ctx.drawImage(bmp, 0, 0);
-  bmp.close();
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  stripHanger(img);
-  ctx.putImageData(img, 0, 0);
-  const blob = await blobFromCanvas(canvas);
-  return blob ?? cut;
+
+  // 2) Binary-ish alpha: kill fringe, solidify subject.
+  for (let i = 3; i < px.length; i += 4) {
+    const a = px[i];
+    if (a === 0) continue;
+    if (a < profile.alphaKill) px[i] = 0;
+    else if (a < profile.alphaSolid) px[i] = 255;
+  }
+
+  // 3) Morphological edge trim — drop pixels that sit on the transparent border.
+  if (profile.edgeTrim > 0) {
+    const alpha = new Uint8Array(n);
+    for (let i = 0; i < n; i++) alpha[i] = px[i * 4 + 3] >= 128 ? 1 : 0;
+    let cur = alpha;
+    for (let pass = 0; pass < profile.edgeTrim; pass++) {
+      const next = new Uint8Array(n);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = y * w + x;
+          if (!cur[idx]) continue;
+          if (
+            cur[idx - 1] &&
+            cur[idx + 1] &&
+            cur[idx - w] &&
+            cur[idx + w]
+          ) {
+            next[idx] = 1;
+          }
+        }
+      }
+      cur = next;
+    }
+    for (let i = 0; i < n; i++) {
+      if (!cur[i]) px[i * 4 + 3] = 0;
+      else if (px[i * 4 + 3] > 0) px[i * 4 + 3] = 255;
+    }
+  }
+
+  // 4) Color decontamination on the remaining edge ring.
+  defringeRgb(img);
+}
+
+function defringeRgb(img: ImageData): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const src = new Uint8ClampedArray(px);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      if (src[i + 3] < 128) continue;
+      let clear = false;
+      for (let dy = -1; dy <= 1 && !clear; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (src[((y + dy) * w + (x + dx)) * 4 + 3] < 18) {
+            clear = true;
+            break;
+          }
+        }
+      }
+      if (!clear) continue;
+
+      let rs = 0;
+      let gs = 0;
+      let bs = 0;
+      let n = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const j = (ny * w + nx) * 4;
+          if (src[j + 3] < 240) continue;
+          // Prefer interior (not itself on the edge ring).
+          let neighborClear = false;
+          for (let ey = -1; ey <= 1 && !neighborClear; ey++) {
+            for (let ex = -1; ex <= 1; ex++) {
+              const exx = nx + ex;
+              const eyy = ny + ey;
+              if (exx < 0 || eyy < 0 || exx >= w || eyy >= h) continue;
+              if (src[(eyy * w + exx) * 4 + 3] < 18) {
+                neighborClear = true;
+                break;
+              }
+            }
+          }
+          if (neighborClear) continue;
+          rs += src[j];
+          gs += src[j + 1];
+          bs += src[j + 2];
+          n++;
+        }
+      }
+      if (n < 3) continue;
+      px[i] = Math.round(rs / n);
+      px[i + 1] = Math.round(gs / n);
+      px[i + 2] = Math.round(bs / n);
+      px[i + 3] = 255;
+    }
+  }
+}
+
+function cornersStillFloor(img: ImageData): boolean {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const pts = [
+    [2, 2],
+    [w - 3, 2],
+    [2, h - 3],
+    [w - 3, h - 3],
+  ];
+  let hit = 0;
+  for (const [x, y] of pts) {
+    if (px[(y * w + x) * 4 + 3] > 200) hit++;
+  }
+  return hit >= 3;
+}
+
+function keepMainSubject(img: ImageData): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const n = w * h;
+  if (n > 1_600_000) return;
+  const seen = new Int32Array(n);
+  let label = 0;
+  let bestLabel = 0;
+  let bestArea = 0;
+  const stack = new Int32Array(n);
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || px[start * 4 + 3] < 40) continue;
+    label += 1;
+    let top = 0;
+    stack[top++] = start;
+    seen[start] = label;
+    let area = 0;
+    while (top) {
+      const idx = stack[--top]!;
+      area++;
+      const x = idx % w;
+      const y = (idx / w) | 0;
+      if (x > 0 && !seen[idx - 1] && px[(idx - 1) * 4 + 3] >= 40) {
+        seen[idx - 1] = label;
+        stack[top++] = idx - 1;
+      }
+      if (x + 1 < w && !seen[idx + 1] && px[(idx + 1) * 4 + 3] >= 40) {
+        seen[idx + 1] = label;
+        stack[top++] = idx + 1;
+      }
+      if (y > 0 && !seen[idx - w] && px[(idx - w) * 4 + 3] >= 40) {
+        seen[idx - w] = label;
+        stack[top++] = idx - w;
+      }
+      if (y + 1 < h && !seen[idx + w] && px[(idx + w) * 4 + 3] >= 40) {
+        seen[idx + w] = label;
+        stack[top++] = idx + w;
+      }
+    }
+    if (area > bestArea) {
+      bestLabel = label;
+      bestArea = area;
+    }
+  }
+  if (!bestLabel) return;
+  for (let i = 0; i < n; i++) {
+    if (seen[i] !== bestLabel) px[i * 4 + 3] = 0;
+  }
 }
 
 function meanColor(
@@ -378,26 +652,10 @@ function stripHanger(img: ImageData): void {
   }
 }
 
-async function isolateRgba(cut: Blob, keepLabel?: boolean): Promise<Blob> {
-  const bmp = await createImageBitmap(cut);
-  const src = document.createElement("canvas");
-  src.width = bmp.width;
-  src.height = bmp.height;
-  const sctx = src.getContext("2d", { willReadFrequently: true });
-  if (!sctx) {
-    bmp.close();
-    throw new Error("Could not read cut");
-  }
-  sctx.drawImage(bmp, 0, 0);
-  bmp.close();
-  const data = sctx.getImageData(0, 0, src.width, src.height);
-  knockSoftWhiteMatte(data);
-  if (!cornersStillFloor(data)) {
-    keepMainSubject(data);
-    cleanFringe(data, Boolean(keepLabel));
-  }
-  sctx.putImageData(data, 0, 0);
-
+async function cropIsolate(
+  src: HTMLCanvasElement,
+  data: ImageData,
+): Promise<Blob> {
   const px = data.data;
   let x0 = src.width;
   let y0 = src.height;
@@ -412,9 +670,7 @@ async function isolateRgba(cut: Blob, keepLabel?: boolean): Promise<Blob> {
       if (y > y1) y1 = y;
     }
   }
-  if (x1 <= x0 || y1 <= y0) {
-    throw new Error("No garment in the cut");
-  }
+  if (x1 <= x0 || y1 <= y0) throw new Error("No garment in the cut");
   const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04);
   x0 = Math.max(0, x0 - pad);
   y0 = Math.max(0, y0 - pad);
@@ -437,133 +693,6 @@ async function isolateRgba(cut: Blob, keepLabel?: boolean): Promise<Blob> {
   const blob = await blobFromCanvas(tile);
   if (!blob) throw new Error("Could not encode cut");
   return blob;
-}
-
-/** Drop leftover white studio puddles without eating solid white bottles. */
-function knockSoftWhiteMatte(img: ImageData): void {
-  const px = img.data;
-  for (let i = 0; i < px.length; i += 4) {
-    const a = px[i + 3];
-    if (a === 0 || a >= 240) continue;
-    const r = px[i];
-    const g = px[i + 1];
-    const b = px[i + 2];
-    const mx = Math.max(r, g, b);
-    const mn = Math.min(r, g, b);
-    const sat = mx === 0 ? 0 : (mx - mn) / mx;
-    if (mx / 255 > 0.82 && sat < 0.1) px[i + 3] = 0;
-  }
-}
-
-function cornersStillFloor(img: ImageData): boolean {
-  const w = img.width;
-  const h = img.height;
-  const px = img.data;
-  const pts = [
-    [2, 2],
-    [w - 3, 2],
-    [2, h - 3],
-    [w - 3, h - 3],
-  ];
-  let hit = 0;
-  for (const [x, y] of pts) {
-    if (px[(y * w + x) * 4 + 3] > 200) hit++;
-  }
-  return hit >= 3;
-}
-
-function keepMainSubject(img: ImageData): void {
-  const w = img.width;
-  const h = img.height;
-  const px = img.data;
-  const n = w * h;
-  if (n > 1_600_000) return;
-  const seen = new Int32Array(n);
-  let label = 0;
-  let bestLabel = 0;
-  let bestArea = 0;
-  const stack = new Int32Array(n);
-  for (let start = 0; start < n; start++) {
-    if (seen[start] || px[start * 4 + 3] < 40) continue;
-    label += 1;
-    let top = 0;
-    stack[top++] = start;
-    seen[start] = label;
-    let area = 0;
-    while (top) {
-      const idx = stack[--top]!;
-      area++;
-      const x = idx % w;
-      const y = (idx / w) | 0;
-      if (x > 0 && !seen[idx - 1] && px[(idx - 1) * 4 + 3] >= 40) {
-        seen[idx - 1] = label;
-        stack[top++] = idx - 1;
-      }
-      if (x + 1 < w && !seen[idx + 1] && px[(idx + 1) * 4 + 3] >= 40) {
-        seen[idx + 1] = label;
-        stack[top++] = idx + 1;
-      }
-      if (y > 0 && !seen[idx - w] && px[(idx - w) * 4 + 3] >= 40) {
-        seen[idx - w] = label;
-        stack[top++] = idx - w;
-      }
-      if (y + 1 < h && !seen[idx + w] && px[(idx + w) * 4 + 3] >= 40) {
-        seen[idx + w] = label;
-        stack[top++] = idx + w;
-      }
-    }
-    if (area > bestArea) {
-      bestLabel = label;
-      bestArea = area;
-    }
-  }
-  if (!bestLabel) return;
-  for (let i = 0; i < n; i++) {
-    if (seen[i] !== bestLabel) px[i * 4 + 3] = 0;
-  }
-}
-
-function cleanFringe(img: ImageData, keepLabel = false): void {
-  const w = img.width;
-  const h = img.height;
-  const px = img.data;
-  const tmp = keepLabel ? new Uint8ClampedArray(px) : px;
-  for (let i = 0; i < px.length; i += 4) {
-    const a = px[i + 3];
-    if (a === 0) continue;
-    if (a < 48) {
-      px[i + 3] = 0;
-      continue;
-    }
-    if (a >= 230) continue;
-    const r = px[i];
-    const g = px[i + 1];
-    const b = px[i + 2];
-    const mx = Math.max(r, g, b);
-    const mn = Math.min(r, g, b);
-    const sat = mx === 0 ? 0 : (mx - mn) / mx;
-    const val = mx / 255;
-    if (sat >= 0.12 || val <= 0.55) continue;
-    if (!keepLabel) {
-      px[i + 3] = 0;
-      continue;
-    }
-    const x = (i / 4) % w;
-    const y = ((i / 4) / w) | 0;
-    let nearClear = false;
-    for (let dy = -1; dy <= 1 && !nearClear; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        if (tmp[(ny * w + nx) * 4 + 3] < 18) {
-          nearClear = true;
-          break;
-        }
-      }
-    }
-    if (nearClear) px[i + 3] = 0;
-  }
 }
 
 /** Flood-fill fallback only. Do not use on white clothes. */
@@ -632,6 +761,14 @@ export function knockBackground(img: HTMLImageElement, maxEdge = 1400): string {
     tryPush(x, y - 1);
     tryPush(x, y + 1);
   }
+  // Harden the flood-fill matte the same way product cuts do.
+  refineMatte(data, {
+    maxEdge,
+    alphaKill: 64,
+    alphaSolid: 210,
+    edgeTrim: 1,
+    stripHanger: false,
+  });
   ctx.putImageData(data, 0, 0);
   const out = canvas.toDataURL("image/png");
   if (cache.size > 48) cache.clear();

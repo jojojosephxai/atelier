@@ -7,9 +7,7 @@ import { LookBuilderDialog } from "@/components/look-builder";
 import { LookBoard } from "@/components/look-board";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/field";
-import { currentSeason } from "@/lib/routines";
 import { useWardrobe } from "@/lib/store";
-import { composeWithGrok, toStylistPayload } from "@/lib/stylist";
 import { formatDay, todayISO } from "@/lib/utils";
 
 export const Route = createFileRoute("/looks")({ component: LooksPage });
@@ -19,15 +17,12 @@ function LooksPage() {
     looks,
     garments,
     extras,
-    profile,
     updateLook,
     removeLook,
     wearToday,
-    addLook,
   } = useWardrobe();
   const [focus, setFocus] = useState<string | "all">("all");
   const [build, setBuild] = useState(false);
-  const [busy, setBusy] = useState(false);
 
   const days = useMemo(() => {
     const start = startOfToday();
@@ -41,54 +36,6 @@ function LooksPage() {
     focus === "all" ? true : l.plannedDate === focus,
   );
 
-  async function consultGrok() {
-    if (garments.length < 3) {
-      toast.error("Add a few more pieces before asking Grok.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const payload = toStylistPayload(
-        garments,
-        extras,
-        {
-          description:
-            "Three distinct outfits from this closet for today. Vary the jackets and bases. Clothes only.",
-          climate: profile.defaultClimate,
-          occasion: "smart-casual",
-          season: currentSeason(),
-        },
-        profile.styleNotes,
-      );
-      const res = await composeWithGrok({ data: payload });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      let added = 0;
-      for (const look of res.looks) {
-        addLook({
-          name: look.name,
-          garmentIds: look.garmentIds,
-          extraIds: [],
-          occasion: look.name,
-          notes: look.rationale,
-          source: "stylist",
-        });
-        added += 1;
-      }
-      toast(
-        added
-          ? `Grok sent ${added} look${added === 1 ? "" : "s"}`
-          : "Grok sent looks you already have",
-      );
-    } catch {
-      toast.error("Grok could not be reached.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -98,22 +45,13 @@ function LooksPage() {
             Looks
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Saved outfits. Consult Grok for three new ones from this closet.
+            Saved outfits from Today and the style analyzer. Build more by hand.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={() => void consultGrok()}
-          >
-            {busy ? "Consulting Grok…" : "Consult Grok"}
-          </Button>
-          <Button onClick={() => setBuild(true)}>
-            <Plus className="size-4" />
-            Build a look
-          </Button>
-        </div>
+        <Button onClick={() => setBuild(true)}>
+          <Plus className="size-4" />
+          Build a look
+        </Button>
       </header>
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
@@ -163,16 +101,9 @@ function LooksPage() {
         <div className="rounded-xl bg-surface px-6 py-16 text-center shadow-[var(--shadow-border)]">
           <p className="font-display text-3xl text-fg">No looks yet</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
-            Build one from the closet, or let Grok compose three.
+            Wear a kit from Today, compose on Stylist, or build one from the closet.
           </p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void consultGrok()}
-            >
-              {busy ? "Consulting Grok…" : "Consult Grok"}
-            </Button>
+          <div className="mt-5">
             <Button onClick={() => setBuild(true)}>Build a look</Button>
           </div>
         </div>

@@ -106,9 +106,8 @@ export const LookBoard = memo(function LookBoard({
   const voteKey = lookCoreKey(garmentIds, garments);
   const vote = votePolarity(lookVotes?.[voteKey]);
   const routine = routineOf(`${occasion} ${name} ${rationale}`);
-  const fromGrok = source === "stylist";
-  const title = fromGrok && name.trim() ? name : lookName(pieces, routine);
-  const why = fromGrok && rationale?.trim()
+  const title = name.trim() ? name : lookName(pieces, routine);
+  const why = rationale?.trim()
     ? rationale.trim()
     : describeLook(pieces, { routine, climate }, garmentIds.join("").length % 4);
 

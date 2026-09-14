@@ -72,7 +72,11 @@ export function ExtraCard({
       <div className="caption-band flex min-h-14 min-w-0 shrink-0 flex-col justify-center px-2.5 py-2">
         <p className="truncate text-sm leading-snug font-medium">{extra.name}</p>
         <p className="caption-sub mt-0.5 truncate text-xs leading-snug">
-          {extra.brand}
+          {extra.kind === "skincare" && extra.step != null
+            ? extra.brand
+              ? `${extra.step} · ${extra.brand}`
+              : `Step ${extra.step}`
+            : extra.brand}
         </p>
       </div>
     </>

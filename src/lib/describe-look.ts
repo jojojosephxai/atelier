@@ -225,6 +225,7 @@ export function copyFromFacts(facts: LookFacts, variety = 0): string {
       `Built around ${kit}, ${colors.toLowerCase()} ${colorVerb} the look ${feel || "coherent"}${sil ? ` and ${sil}` : ""}. Fits ${occTail}.`,
     );
   } else if (kit) {
+    const silBit = sil ? `, ${sil} through the line` : "";
     drafts.push(
       `This look is built around ${kit}${silBit}. A strong option for ${occTail}.`,
     );

@@ -4,12 +4,10 @@ import { toast } from "sonner";
 import { LookBoard } from "@/components/look-board";
 import { Button } from "@/components/ui/button";
 import { Field, NativeSelect, Textarea } from "@/components/ui/field";
-import { Switch } from "@/components/ui/switch";
 import { composeLooks } from "@/lib/engine";
 import { likedGarmentIds, skippedLookKeys } from "@/lib/look";
 import { ROUTINES, currentSeason, type RoutineId } from "@/lib/routines";
 import { useWardrobe } from "@/lib/store";
-import { composeWithGrok, toStylistPayload } from "@/lib/stylist";
 import type {
   Brief,
   Climate,
@@ -39,7 +37,6 @@ function StylistPage() {
   const [occasion, setOccasion] = useState<Formality>("smart-casual");
   const [season, setSeason] = useState<Season>(currentSeason());
   const [scene, setScene] = useState<RoutineId | null>(null);
-  const [useGrok, setUseGrok] = useState(true);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<SuggestedLook[]>([]);
   const [status, setStatus] = useState("");
@@ -47,7 +44,7 @@ function StylistPage() {
 
   const brief: Brief = { description, climate, occasion, season };
 
-  async function compose(next?: Partial<Brief>, grok = useGrok) {
+  function compose(next?: Partial<Brief>) {
     if (garments.length < 3) {
       toast.error("Add a few more pieces before composing.");
       return;
@@ -55,33 +52,7 @@ function StylistPage() {
     const used: Brief = { ...brief, ...next };
     const id = ++runId.current;
     setBusy(true);
-    setStatus(grok ? "Consulting Grok" : "Reading the closet");
-
-    if (grok) {
-      try {
-        const payload = toStylistPayload(
-          garments,
-          extras,
-          used,
-          profile.styleNotes,
-        );
-        const res = await composeWithGrok({ data: payload });
-        if (id !== runId.current) return;
-        if (res.ok) {
-          setResults(res.looks);
-        } else {
-          toast.error(res.error);
-          setResults([]);
-        }
-      } catch {
-        if (id !== runId.current) return;
-        toast.error("Grok could not be reached.");
-        setResults([]);
-      }
-      setBusy(false);
-      setStatus("");
-      return;
-    }
+    setStatus("Reading the closet");
 
     const local = composeLooks(garments, extras, used, {
       likedIds: likedGarmentIds(profile.lookVotes),
@@ -128,7 +99,7 @@ function StylistPage() {
         </h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
           Pick a scene for an instant set, or describe the day when you want
-          something specific.
+          something specific. Runs on this device from your closet.
         </p>
       </header>
 
@@ -146,14 +117,12 @@ function StylistPage() {
                 setDescription(r.description);
                 setOccasion(r.occasion);
                 setSeason(currentSeason());
-                if (!useGrok) {
-                  void compose({
-                    description: r.description,
-                    occasion: r.occasion,
-                    season: currentSeason(),
-                    climate,
-                  }, false);
-                }
+                compose({
+                  description: r.description,
+                  occasion: r.occasion,
+                  season: currentSeason(),
+                  climate,
+                });
               }}
               className={cn(
                 "h-11 rounded-md px-4 text-sm",
@@ -224,13 +193,9 @@ function StylistPage() {
             placeholder="Quiet luxury. No logos. Brown shoes with navy. SPF always."
           />
         </Field>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex h-11 items-center gap-3 text-sm text-muted">
-            <Switch checked={useGrok} onCheckedChange={setUseGrok} />
-            Ask Grok to style this
-          </label>
-          <Button onClick={() => void compose()} disabled={busy}>
-            {busy ? (useGrok ? "Consulting Grok" : "Composing") : "Compose looks"}
+        <div className="mt-5 flex justify-end">
+          <Button onClick={() => compose()} disabled={busy}>
+            {busy ? "Composing" : "Compose looks"}
           </Button>
         </div>
         {busy ? (
@@ -247,43 +212,42 @@ function StylistPage() {
                 (l) => l.garmentIds.join() === look.garmentIds.join(),
               );
               return (
-              <LookBoard
-                key={`${look.source}-${look.name}-${look.garmentIds.join("-")}`}
-                name={look.name}
-                garmentIds={look.garmentIds}
-                extraIds={look.extraIds}
-                rationale={look.rationale}
-                climateNotes={look.climateNotes}
-                incomplete={look.incomplete}
-                source={look.source}
-                garments={garments}
-                extras={extras}
-                occasion={`${occasion} ${description}`}
-                lookId={saved?.id}
-                photoDataUrl={saved?.photoDataUrl}
-                actions={
-                  <>
-                    <Button size="sm" onClick={() => save(look, false)}>
-                      Save look
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => save(look, true)}
-                    >
-                      Wear today
-                    </Button>
-                  </>
-                }
-              />
+                <LookBoard
+                  key={`${look.source}-${look.name}-${look.garmentIds.join("-")}`}
+                  name={look.name}
+                  garmentIds={look.garmentIds}
+                  extraIds={look.extraIds}
+                  rationale={look.rationale}
+                  climateNotes={look.climateNotes}
+                  incomplete={look.incomplete}
+                  source={look.source}
+                  garments={garments}
+                  extras={extras}
+                  occasion={`${occasion} ${description}`}
+                  lookId={saved?.id}
+                  photoDataUrl={saved?.photoDataUrl}
+                  actions={
+                    <>
+                      <Button size="sm" onClick={() => save(look, false)}>
+                        Save look
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => save(look, true)}
+                      >
+                        Wear today
+                      </Button>
+                    </>
+                  }
+                />
               );
             })}
           </div>
         </section>
       ) : (
         <p className="text-sm text-muted">
-          Fill the brief, then Compose looks. Grok only runs when that button
-          is on and you press it.
+          Fill the brief, then Compose looks. Suggestions stay on this device.
         </p>
       )}
     </div>
