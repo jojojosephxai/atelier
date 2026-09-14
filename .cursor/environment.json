@@ -1,12 +1,12 @@
 {
   "name": "Atelier",
-  "install": "npm ci",
+  "install": "npm ci && npm run build",
   "ports": [{ "name": "web", "port": 8080 }],
   "terminals": [
     {
-      "name": "dev",
-      "command": "npm run dev",
-      "description": "Atelier in your browser at port 8080 (no local Node needed)"
+      "name": "web",
+      "command": "npm run preview:8080",
+      "description": "Production preview on 8080 (works in Cursor Preview; dev HMR often does not)"
     }
   ]
 }

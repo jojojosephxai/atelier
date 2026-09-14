@@ -16,12 +16,10 @@ export function FittedPiece({
 }) {
   const ref = useRef<HTMLImageElement>(null);
   const [shown, setShown] = useState(src);
-  const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setShown(src);
-    setReady(false);
     setFailed(false);
   }, [src]);
 
@@ -29,10 +27,7 @@ export function FittedPiece({
     const img = ref.current;
     if (!img) return;
     const apply = () => {
-      if (img.naturalWidth) {
-        setReady(true);
-        onRatio?.(img.naturalWidth / img.naturalHeight);
-      }
+      if (img.naturalWidth) onRatio?.(img.naturalWidth / img.naturalHeight);
     };
     if (img.complete && img.naturalWidth) apply();
     img.addEventListener("load", apply);
@@ -58,11 +53,7 @@ export function FittedPiece({
         }
         setFailed(true);
       }}
-      className={cn(
-        "size-full object-contain object-center",
-        ready ? "opacity-100" : "opacity-0",
-        className,
-      )}
+      className={cn("size-full object-contain object-center", className)}
     />
   );
 }

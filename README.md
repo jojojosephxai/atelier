@@ -10,6 +10,8 @@ You can use Atelier in **your** browser without copying the repo or installing N
 2. Wait until the dev server is running (port **8080**).
 3. Use **Preview** on that run, **or** **Desktop** → open the browser there → `http://localhost:8080`.
 
+4. If the page looks empty, **hard-refresh** (Ctrl+Shift+R) or ask the agent to restart with **`npm run serve:preview`** (production build — more reliable than dev mode in Preview).
+
 The app runs in Chrome/Edge on your laptop; the code lives in the cloud. School blocks on `.exe` installers do not matter for this path.
 
 **Preview vs typing localhost:** On [cursor.com/agents](https://cursor.com/agents), use **Preview** or **Desktop**. A random `localhost:8080` tab only works when the Cursor **desktop** app is forwarding that port.
