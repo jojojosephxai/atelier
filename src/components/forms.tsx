@@ -740,14 +740,13 @@ export function ExtraFormDialog({
                   onChange={(v) => setSlot(v as SkincareSlot)}
                 />
               </div>
-              <Field label="Order">
+              <Field label="Step">
                 <Input
                   type="number"
                   min={1}
                   max={12}
                   value={step}
                   onChange={(e) => setStep(Number(e.target.value) || 1)}
-                  aria-label="Application order"
                 />
               </Field>
             </div>

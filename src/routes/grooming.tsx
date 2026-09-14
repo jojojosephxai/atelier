@@ -48,24 +48,20 @@ function GroomingPage() {
     void preloadCutter();
   }, []);
 
-  const { day, night, both, bottles } = useMemo(() => {
+  const { day, night, bottles } = useMemo(() => {
     const skin = extras.filter((e) => e.kind === "skincare");
     return {
-      both: byStep(skin),
       day: byStep(skin.filter((e) => slotOf(e) !== "pm")),
       night: byStep(skin.filter((e) => slotOf(e) !== "am")),
       bottles: extras.filter((e) => e.kind !== "skincare"),
     };
   }, [extras]);
 
-  const skinList =
-    when === "day" ? day : when === "night" ? night : both;
-  const hasSkin = skinList.length > 0;
+  const showDay = when !== "night";
+  const showNight = when !== "day";
+  const hasSkin =
+    (showDay && day.length > 0) || (showNight && night.length > 0);
   const empty = !hasSkin && !bottles.length;
-
-  function toneFor(e: Extra): "day" | "night" {
-    return slotOf(e) === "pm" ? "night" : "day";
-  }
 
   function openNew() {
     setEditing(null);
@@ -123,24 +119,44 @@ function GroomingPage() {
       {empty ? <p className="text-sm text-muted">No steps yet.</p> : null}
 
       {hasSkin ? (
-        <section>
-          {when !== "both" ? (
-            <h2 className="font-display text-3xl leading-none text-fg italic">
-              {when === "day" ? "Day" : "Night"}
-            </h2>
+        <div className={cn(when === "both" ? "groom-split" : "")}>
+          {showDay ? (
+            <section>
+              <h2 className="font-display text-3xl leading-none text-fg italic">
+                Day
+              </h2>
+              <div className="groom-grid mt-3">
+                {day.map((e, i) => (
+                  <ExtraCard
+                    key={`am-${e.id}`}
+                    extra={e}
+                    tone="day"
+                    eager={i < 4}
+                    onClick={() => openEdit(e)}
+                  />
+                ))}
+              </div>
+            </section>
           ) : null}
-          <div className={cn("groom-grid", when !== "both" && "mt-3")}>
-            {skinList.map((e, i) => (
-              <ExtraCard
-                key={`${when}-${e.id}`}
-                extra={e}
-                tone={toneFor(e)}
-                eager={i < 4}
-                onClick={() => openEdit(e)}
-              />
-            ))}
-          </div>
-        </section>
+          {showNight ? (
+            <section>
+              <h2 className="font-display text-3xl leading-none text-fg italic">
+                Night
+              </h2>
+              <div className="groom-grid mt-3">
+                {night.map((e, i) => (
+                  <ExtraCard
+                    key={`pm-${e.id}`}
+                    extra={e}
+                    tone="night"
+                    eager={i < 4}
+                    onClick={() => openEdit(e)}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
       ) : null}
 
       {bottles.length ? (
