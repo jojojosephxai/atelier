@@ -13,7 +13,7 @@ export const WHY_INSIGHTS: WhyInsight[] = [
 
 /** Phrases and shells that read as design-system jargon, not fashion copy. */
 const JARGON =
-  /\b(value contrast|loud break|texture break|mute (?:value )?shift|supporting breaks|as the ground|frames a softer|sharper outer|softer body|one mute register|depthRead|psychologically|comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer)\b/i;
+  /\b(value contrast|loud break|texture break|mute (?:value )?shift|supporting breaks|as the ground|frames a softer|sharper outer|softer body|one mute register|depthRead|psychologically|comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer|firmer face|easier hang|keep the stack|upper stack|dark weight)\b|\bstac(?:k|ked)\b/i;
 
 /** Forced diagnostic templates — ban entirely. */
 const FORBIDDEN_SHELL =
@@ -81,36 +81,73 @@ function shoesOf(pieces: Garment[]) {
   return pieces.find((g) => g.category === "footwear");
 }
 
-/** Short role noun — never the full title pair. */
+function blobOf(g: Garment): string {
+  return `${g.name} ${g.notes} ${g.material} ${g.brand ?? ""}`.toLowerCase();
+}
+
+/** Role from messy import names — never the last junk word of "jacket 2". */
 function roleNoun(g: Garment): string {
-  const n = `${g.name} ${g.notes}`.toLowerCase();
-  if (/rain\s*shell|\bshell\b/.test(n)) return "shell";
-  if (/harrington|denim\s*jacket|field\s*jacket/.test(n)) return "jacket";
-  if (/hoodie/.test(n)) return "fleece";
-  if (/quarter[-\s]?zip/.test(n)) return "zip layer";
-  if (/polo/.test(n)) return "knit";
-  if (/merino|crew/.test(n)) return "crew";
-  if (/\btee\b|t-shirt/.test(n)) return "tee";
-  if (/oxford|shirt/.test(n)) return "shirt";
-  if (/jean/.test(n)) return "jeans";
+  const n = blobOf(g);
+  if (/rain\s*shell|\bshell\b|windbreaker/.test(n)) return "shell";
+  if (/puffer|parka|down vest/.test(n)) return "parka";
+  if (/trench|overcoat|topcoat|polo coat|\bcoat\b/.test(n)) return "coat";
+  if (/blazer|suit jacket/.test(n)) return "blazer";
+  if (/harrington|bomber|field jacket|denim jacket|\bjacket\b/.test(n)) {
+    return "jacket";
+  }
+  if (/hoodie|hooded/.test(n)) return "hoodie";
+  if (/quarter[-\s]?zip|half[-\s]?zip|\bzip\b/.test(n)) return "zip";
+  if (/sweatshirt|pullover|jumper/.test(n)) return "sweatshirt";
+  if (/cardigan|sweater|merino|\bcrew\b/.test(n)) return "knit";
+  if (/\bpolo\b/.test(n)) return "knit";
+  if (/\btee\b|t-shirt|tshirt/.test(n)) return "tee";
+  if (/oxford|button[- ]down|\bshirt\b/.test(n)) return "shirt";
+  if (/\b501\b|\b511\b|\blevi/.test(n) || /jean/.test(n)) return "jeans";
   if (/chino/.test(n)) return "chinos";
-  if (/jogger/.test(n)) return "joggers";
-  if (/trouser|pant/.test(n)) return "trousers";
+  if (/jogger|sweatpant/.test(n)) return "joggers";
+  if (/cargo/.test(n)) return "cargos";
+  if (/legging/.test(n)) return "leggings";
+  if (/trouser|dress pant|\bpants?\b/.test(n)) return "trousers";
   if (/short/.test(n) && g.category === "bottoms") return "shorts";
-  if (/trainer|sneaker/.test(n)) return "sneakers";
-  if (/loafer|derby|boot/.test(n)) return "shoes";
+  if (/skirt/.test(n)) return "skirt";
+  if (
+    /trainer|sneaker|dunk|air force|gazelle|samba|runner|asics|new balance|\bnikes?\b/.test(
+      n,
+    )
+  ) {
+    return "sneakers";
+  }
+  if (/loafer|derby|monk/.test(n)) return "shoes";
+  if (/boot|chelsea/.test(n)) return "boots";
+  if (/sandal|slide/.test(n)) return "sandals";
   if (g.category === "outerwear") return "jacket";
+  if (g.category === "dresses") return "dress";
   if (g.category === "tops") return "top";
-  if (g.category === "bottoms") return "bottom";
+  if (g.category === "bottoms") return "trousers";
   if (g.category === "footwear") return "shoes";
-  return g.name.split(/\s+/).slice(-1)[0]!.toLowerCase();
+  const last = g.name.trim().split(/\s+/).pop()?.toLowerCase() ?? "piece";
+  return GARMENT_WORD.test(last) ? last : "piece";
 }
 
+/** Trust a specific palette name; refine Custom / generic chips from hex. */
 function colorOf(g: Garment): string {
-  return (g.colorName || "").trim();
+  const named = (g.colorName || "").trim();
+  const generic = /^(custom|blue|green|brown|red|pink|purple)$/i.test(named);
+  if (named && !generic) return named;
+  const raw = (g.hex || "").replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return named;
+  const { h, s, l } = hexToHsl(`#${raw}`);
+  if (s < 0.1 && l < 0.18) return named || "Black";
+  if (s < 0.1 && l > 0.88) return named || "White";
+  if (s < 0.12 && l < 0.4) return "Charcoal";
+  if (s < 0.12) return named || "Grey";
+  if (h >= 200 && h < 255 && l < 0.38) return "Navy";
+  if (h >= 200 && h < 255) return named || "Steel";
+  if (h >= 70 && h < 160 && s > 0.12 && l < 0.5) return "Olive";
+  return named;
 }
 
-/** Material only from the garment field — never invent from appearance. */
+/** Material only from the garment field — never invent from name or appearance. */
 function matOf(g: Garment): string {
   return (g.material || "").trim();
 }
@@ -168,6 +205,10 @@ function scrub(line: string): string {
   const t = line.replace(/\s+/g, " ").trim();
   if (!t || JARGON.test(t) || FORBIDDEN_SHELL.test(t)) return "";
   if (/is the wet-weather|even on a mild/i.test(t)) return "";
+  if (/\b\w+\s+outside and \w+\s+inside\b/i.test(t)) return "";
+  if (/firmer face|easier hang underneath|keep the stack layered/i.test(t)) {
+    return "";
+  }
   if (
     /navy rain shell|navy polo knit|navy harrington|black merino crew|indigo denim jacket|ivory linen shirt/i.test(
       t,
@@ -177,6 +218,25 @@ function scrub(line: string): string {
   }
   if (/\b(harrington|hoodie|rain shell) over\b/i.test(t)) return "";
   return t;
+}
+
+/**
+ * Observable outer vs under structure — garment roles, not fiber claims.
+ * Prefer visual: crisper shell/jacket, softer shirt/knit beneath.
+ */
+function outerInnerStructure(outer: Garment, top: Garment): string {
+  const o = roleNoun(outer);
+  const t = roleNoun(top);
+  if (o === "shell") {
+    return `The shell adds structure while the ${t} beneath falls more softly`;
+  }
+  if (/knit|tee|hoodie|sweatshirt|zip/.test(t)) {
+    return `The ${o} holds a crisper outer line while the ${t} underneath stays smoother`;
+  }
+  if (/shirt/.test(t)) {
+    return `The ${o} adds structure while the ${t} beneath falls more softly`;
+  }
+  return `The ${o} reads crisper up top while the ${t} underneath keeps a softer drape`;
 }
 
 /** Overall palette feel — only when the kit earns it. */
@@ -195,6 +255,13 @@ function paletteFeel(pieces: Garment[]): string {
     return "muted throughout";
   }
   return "";
+}
+
+/** Append feel only when the core sentence is still short (one observation). */
+function withFeel(core: string, feel: string): string {
+  if (!feel) return core;
+  if ((core.match(/,/g) ?? []).length >= 1 || core.includes(";")) return core;
+  return `${core} — ${feel}`;
 }
 
 function coloredRole(g: Garment): string {
@@ -236,7 +303,7 @@ function paletteSentence(
     }
     if (bottom && top && !sameFamily(top, bottom)) {
       return scrub(
-        `${coloredRole(bottom)} break the quieter ${colorOf(top).toLowerCase() || "upper"} stack and keep the eye moving down`,
+        `${coloredRole(bottom)} break the quieter ${colorOf(top).toLowerCase() || "upper"} field and keep the eye moving down`,
       );
     }
   }
@@ -246,16 +313,16 @@ function paletteSentence(
     if (outer && top && bottom) {
       if (isDark(outer) && isLight(top)) {
         return scrub(
-          `Dark weight sits in the ${roleNoun(outer)}, ${colorOf(top).toLowerCase()} lightens the middle, and ${coloredRole(bottom)} hold the lower half`,
+          `Darker tone sits in the ${roleNoun(outer)}, ${colorOf(top).toLowerCase()} lightens the middle, and ${coloredRole(bottom)} hold the lower half`,
         );
       }
       if (sameFamily(outer, top)) {
         return scrub(
-          `Most of the mass stays ${colorOf(outer).toLowerCase()} up top, with ${coloredRole(bottom)} carrying the lower half`,
+          `Most of the color stays ${colorOf(outer).toLowerCase()} up top, with ${coloredRole(bottom)} carrying the lower half`,
         );
       }
       return scrub(
-        `Color stacks ${colorOf(outer).toLowerCase()} outside, ${colorOf(top).toLowerCase()} through the ${roleNoun(top)}, ${colorOf(bottom).toLowerCase()} below`,
+        `Color runs ${colorOf(outer).toLowerCase()} outside, ${colorOf(top).toLowerCase()} through the ${roleNoun(top)}, ${colorOf(bottom).toLowerCase()} below`,
       );
     }
     if (layer && top && bottom) {
@@ -277,14 +344,15 @@ function paletteSentence(
       );
     }
     if (outer && top && !sameFamily(outer, top)) {
-      const tie = feel ? ` — ${feel}` : "";
-      return scrub(
-        `You see ${coloredRole(outer)} first, then ${coloredRole(top)} inside${bottom ? `, tied by ${coloredRole(bottom)}` : ""}${tie}`,
-      );
+      const core = `You see ${coloredRole(outer)} first, then ${coloredRole(top)} inside${bottom ? `, tied by ${coloredRole(bottom)}` : ""}`;
+      return scrub(withFeel(core, feel));
     }
     if (top && bottom) {
       return scrub(
-        `${coloredRole(top)} meets ${coloredRole(bottom)} — ${feel || "related tones, not a costume break"}`,
+        withFeel(
+          `${coloredRole(top)} meets ${coloredRole(bottom)}`,
+          feel || "related tones, not a costume break",
+        ),
       );
     }
   }
@@ -302,9 +370,12 @@ function paletteSentence(
       );
     }
     return scrub(
-      `${c} holds the ${roleNoun(outer)} and ${roleNoun(top)} in one quiet field${
-        bottom ? `, continued by ${coloredRole(bottom)}` : ""
-      }${feel ? ` — ${feel}` : ""}`,
+      withFeel(
+        `${c} holds the ${roleNoun(outer)} and ${roleNoun(top)} in one quiet field${
+          bottom ? `, continued by ${coloredRole(bottom)}` : ""
+        }`,
+        feel,
+      ),
     );
   }
 
@@ -313,19 +384,15 @@ function paletteSentence(
     const tc = colorOf(top);
     if (oc && tc && oc.toLowerCase() !== tc.toLowerCase()) {
       if (isLight(top) && isDark(outer)) {
-        return scrub(
-          `${oc} holds the ${roleNoun(outer)} while ${tc.toLowerCase()} opens through the ${roleNoun(top)}${
-            bottom
-              ? `, and ${coloredRole(bottom)} quiet the lower half`
-              : ""
-          }${feel ? ` — ${feel}` : ""}`,
-        );
+        const core = bottom
+          ? `${oc} holds the ${roleNoun(outer)} while ${tc.toLowerCase()} opens through the ${roleNoun(top)}, and ${coloredRole(bottom)} quiet the lower half`
+          : `${oc} holds the ${roleNoun(outer)} while ${tc.toLowerCase()} opens through the ${roleNoun(top)}`;
+        return scrub(withFeel(core, feel));
       }
-      return scrub(
-        `${coloredRole(outer)} and ${coloredRole(top)} sit in different values${
-          bottom ? `, with ${coloredRole(bottom)} steadying the lower half` : ""
-        }${feel ? ` — ${feel}` : ""}`,
-      );
+      const core = `${coloredRole(outer)} and ${coloredRole(top)} sit in different values${
+        bottom ? `, with ${coloredRole(bottom)} steadying the lower half` : ""
+      }`;
+      return scrub(withFeel(core, feel));
     }
   }
 
@@ -356,9 +423,7 @@ function paletteSentence(
     }
     if (tc && bc) {
       return scrub(
-        `${coloredRole(top)} lands on ${coloredRole(bottom)}${
-          feel ? ` — ${feel}` : ""
-        }`,
+        withFeel(`${coloredRole(top)} lands on ${coloredRole(bottom)}`, feel),
       );
     }
   }
@@ -381,9 +446,10 @@ function paletteSentence(
     .slice(0, 2);
   if (colors.length === 2) {
     return scrub(
-      `${colors[0]} and ${colors[1]!.toLowerCase()} share the kit without fighting${
-        feel ? ` — ${feel}` : ""
-      }`,
+      withFeel(
+        `${colors[0]} and ${colors[1]!.toLowerCase()} share the kit without fighting`,
+        feel,
+      ),
     );
   }
   if (colors.length === 1) {
@@ -432,33 +498,25 @@ function structureSentence(
         sil === "oversized" || /oversized/i.test(`${layer.name} ${layer.notes}`);
       if (oversized) {
         return scrub(
-          `Oversized fleece adds volume up top so the ${roleNoun(bottom)} can stay closer and athletic underneath`,
+          `Oversized ${roleNoun(layer)} adds volume up top so the ${roleNoun(bottom)} can stay closer and athletic underneath`,
         );
       }
     }
   }
 
-  // --- texture insight: hand / fabric when data supports it ---
+  // --- texture insight: visual surface / hang — roles, not fiber claims ---
   if (insight === "texture") {
-    if (outer && top && matsDiffer(outer, top)) {
+    if (outer && top) {
       if (climate === "rain") {
         return scrub(
-          `${matOf(outer)} in the ${roleNoun(outer)} stays crisp over ${matOf(top).toLowerCase()} in rain`,
+          `The ${roleNoun(outer)} stays crisp over the softer ${roleNoun(top)} in rain`,
         );
       }
-      return scrub(
-        `${matOf(outer)} in the ${roleNoun(outer)} reads firmer than ${matOf(top).toLowerCase()} in the ${roleNoun(top)}, so structure sits outside and ease stays through the middle`,
-      );
+      return scrub(outerInnerStructure(outer, top));
     }
-    if (top && bottom && matsDiffer(top, bottom)) {
+    if (top && bottom) {
       return scrub(
-        `${matOf(top)} in the ${roleNoun(top)} and ${matOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} keep the halves related without matching`,
-      );
-    }
-    // No material data: talk structure without inventing fabric names
-    if (outer && top) {
-      return scrub(
-        `The ${roleNoun(outer)} holds a cleaner outer line while the ${roleNoun(top)} stays easier underneath`,
+        `The ${roleNoun(top)} keeps a cleaner surface while the ${roleNoun(bottom)} finish with a steadier hang`,
       );
     }
   }
@@ -472,7 +530,7 @@ function structureSentence(
     }
     if (shoes) {
       return scrub(
-        `The ${roleNoun(shoes)} close the outline after the upper stack does the quieter work`,
+        `The ${roleNoun(shoes)} close the outline after the upper half does the quieter work`,
       );
     }
     if (bottom && top) {
@@ -485,18 +543,27 @@ function structureSentence(
   // --- tonal (default): continuity of hang / slight psychology ---
   if (outer && top) {
     if (matsDiffer(outer, top)) {
-      return scrub(
-        `${matOf(outer)} outside and ${matOf(top).toLowerCase()} inside keep the stack layered — firmer face, easier hang underneath`,
-      );
+      return scrub(outerInnerStructure(outer, top));
     }
     if (sil) {
       return scrub(
         `${sil.charAt(0).toUpperCase()}${sil.slice(1)} proportion links the ${roleNoun(outer)} to the ${roleNoun(top)} so the hang reads as one kit`,
       );
     }
-    return scrub(
-      `The ${roleNoun(outer)} sets the outer outline and the ${roleNoun(top)} stays secondary underneath rather than competing`,
+    const gap = Math.abs(
+      FORMALITY_RANK[outer.formality] - FORMALITY_RANK[top.formality],
     );
+    if (gap >= 2) {
+      const sharp =
+        FORMALITY_RANK[outer.formality] > FORMALITY_RANK[top.formality]
+          ? outer
+          : top;
+      const easy = sharp === outer ? top : outer;
+      return scrub(
+        `The ${roleNoun(sharp)} holds a bit more intent while the ${roleNoun(easy)} keeps the hang easy`,
+      );
+    }
+    return scrub(outerInnerStructure(outer, top));
   }
 
   if (layer) {
@@ -504,7 +571,7 @@ function structureSentence(
       sil === "oversized" || /oversized/i.test(`${layer.name} ${layer.notes}`);
     if (oversized && bottom) {
       return scrub(
-        `Oversized fleece adds volume up top so the ${roleNoun(bottom)} keep a cleaner athletic hang underneath`,
+        `Oversized ${roleNoun(layer)} adds volume up top so the ${roleNoun(bottom)} keep a cleaner athletic hang underneath`,
       );
     }
     if (bottom) {
@@ -513,14 +580,14 @@ function structureSentence(
       );
     }
     return scrub(
-      `Fleece volume up top keeps the kit ready to move rather than going tight`,
+      `Volume up top keeps the kit ready to move rather than going tight`,
     );
   }
 
   if (top && bottom) {
     if (matsDiffer(top, bottom)) {
       return scrub(
-        `${matOf(top)} and ${matOf(bottom).toLowerCase()} hang as related halves rather than a matched set`,
+        `The ${roleNoun(top)} and ${roleNoun(bottom)} hang as related halves rather than matching surfaces`,
       );
     }
     if (sil) {
@@ -543,7 +610,7 @@ function structureSentence(
       `The ${roleNoun(outer)} sets the outer outline so everything under it stays secondary`,
     );
   }
-  return scrub("The hang reads stacked rather than flat");
+  return scrub("The hang reads as one outline rather than flat pieces");
 }
 
 function wordCount(text: string): number {
@@ -580,6 +647,51 @@ export function whyOpeningFingerprint(line: string): string {
  * `insight` selects a distinct sentence architecture (not synonym swaps).
  * Climate may add a brief rain note only when the brief is rain/snow.
  */
+function titlePair(
+  pieces: Garment[],
+  routine: RoutineId,
+): [Garment, Garment] | null {
+  const layer = layerOf(pieces);
+  const outer = outerOf(pieces);
+  const top = topOf(pieces);
+  const bottom = bottomOf(pieces);
+  if (routine === "gym") {
+    if (layer && top) return [layer, top];
+    if (top && bottom) return [top, bottom];
+    return null;
+  }
+  if (outer && top) return [outer, top];
+  if (top && bottom) return [top, bottom];
+  return null;
+}
+
+function titleTokens(pair: [Garment, Garment] | null): string[] {
+  if (!pair) return [];
+  const out: string[] = [];
+  for (const g of pair) {
+    const full = g.name.trim();
+    if (full.length > 2) out.push(full);
+  }
+  return out;
+}
+
+function mentionsPair(text: string, tokens: string[]): boolean {
+  if (tokens.length < 2) return false;
+  const lower = text.toLowerCase();
+  return tokens.filter((t) => lower.includes(t.toLowerCase())).length >= 2;
+}
+
+function stripPair(text: string, tokens: string[]): string {
+  let t = text;
+  for (const tok of [...tokens].sort((a, b) => b.length - a.length)) {
+    t = t.replace(
+      new RegExp(tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+      "",
+    );
+  }
+  return t.replace(/\s{2,}/g, " ").replace(/\s+([,.;])/g, "$1").trim();
+}
+
 export function richWhy(
   pieces: Garment[],
   occasion: RoutineId | string,
@@ -588,18 +700,21 @@ export function richWhy(
 ): string {
   if (!pieces.length) return "";
   const routine = asRoutine(String(occasion));
+  const tokens = titleTokens(titlePair(pieces, routine));
 
-  const s1 =
+  let s1 =
     scrub(paletteSentence(pieces, insight, climate) || "") ||
     "The colors stay related across the kit";
-  const s2 =
+  let s2 =
     scrub(structureSentence(pieces, insight, routine, climate) || "") ||
-    "The hang reads stacked rather than flat";
+    "The hang reads as one outline rather than flat pieces";
+  if (mentionsPair(s1, tokens)) s1 = stripPair(s1, tokens) || s1;
+  if (mentionsPair(s2, tokens)) s2 = stripPair(s2, tokens) || s2;
 
   let text = [endSentence(s1), endSentence(s2)].join(" ");
 
   if (wordCount(text) < 18) {
-    text = `${text} ${endSentence("so the hang reads stacked rather than flat")}`.trim();
+    text = `${text} ${endSentence("so the hang reads as one outline rather than flat pieces")}`.trim();
     text = clampWords(text, 50);
     const bits = text.match(/[^.!?]+[.!?]+/g) ?? [text];
     text = bits.slice(0, 2).join(" ");

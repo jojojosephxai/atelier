@@ -77,7 +77,7 @@ function hangTogether(a: Garment, b: Garment): string | null {
     !mal.includes(mbl) &&
     !mbl.includes(mal);
   if (tex) {
-    return `${ma} outside and ${mb.toLowerCase()} inside keep the stack layered.`;
+    return `The outer piece adds structure while the layer beneath falls more softly.`;
   }
   if (isNeutralHex(a.hex) && isNeutralHex(b.hex)) {
     return `${a.colorName} and ${b.colorName.toLowerCase()} stay quiet together.`;
@@ -88,7 +88,7 @@ function hangTogether(a: Garment, b: Garment): string | null {
     /wool|merino|knit|fleece/i.test(ma) &&
     /linen/i.test(mb)
   ) {
-    return `${ma} over ${mb.toLowerCase()} — warmer face, easier shirt underneath.`;
+    return `The outer piece holds a crisper line while the shirt beneath falls more softly.`;
   }
   if (ma && mb) {
     return `${ma} and ${mb.toLowerCase()} hang as related halves.`;
@@ -177,7 +177,7 @@ export function whyCandidates(
     out.push({
       key: "climate_layer",
       score: 2,
-      line: "Open top line — no extra outer layer in the stack.",
+      line: "Open top line — no extra outer layer.",
     });
   }
   if (outer && top) {

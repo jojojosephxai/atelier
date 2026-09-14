@@ -32,7 +32,10 @@ function sentences(text: string): string[] {
 }
 
 const JARGON =
-  /value contrast|loud break|texture break|as the ground|frames a softer|sharper outer|softer body|\w+ against [\w ]+ is (?:the |a )?(?:value |texture )?(?:contrast|break)/i;
+  /value contrast|loud break|texture break|as the ground|frames a softer|sharper outer|softer body|\w+ against [\w ]+ is (?:the |a )?(?:value |texture )?(?:contrast|break)|firmer face|easier hang|keep the stack|upper stack|\bstac(?:k|ked)\b|dark weight/i;
+
+const STRUCTURE_BANS =
+  /cotton outside|linen inside|keep the stack|firmer face|easier hang underneath|firmer face,? easier|dark weight|\bstac(?:k|ked)\b/i;
 
 function assertVisualWhy(text: string, climate: Climate = "mild") {
   const bits = sentences(text);
@@ -42,6 +45,7 @@ function assertVisualWhy(text: string, climate: Climate = "mild") {
   assert.doesNotMatch(text, /psychologically|trustworthy person|you are/i);
   assert.doesNotMatch(text, /wet-weather|even on a mild day|weather-ready/i);
   assert.doesNotMatch(text, JARGON);
+  assert.doesNotMatch(text, STRUCTURE_BANS);
   if (climate !== "rain" && climate !== "snow") {
     assert.doesNotMatch(text, /\b(rain|snow|wet|mild day)\b/i);
   }
@@ -84,7 +88,7 @@ const navyIvoryOlive = [
 ];
 
 describe("richWhy", () => {
-  it("navy/ivory/olive: names garments, no jargon shell, materials only from fields", () => {
+  it("navy/ivory/olive: names garments, no jargon shell, no fiber-as-insight", () => {
     const text = richWhy(navyIvoryOlive, "school", "mild", "texture");
     assertVisualWhy(text, "mild");
     assert.match(text, /ivory/i);
@@ -92,11 +96,47 @@ describe("richWhy", () => {
     assert.match(text, /olive/i);
     assert.match(text, /shirt|jacket|chinos/i);
     assert.match(text, /chinos/i);
-    // Materials present in data may appear; invented cotton-vs-linen without fields would be wrong —
-    // here both materials exist, so cotton/linen claims are allowed when used.
+    // Prefer visual structure over naming demo fiber fields as the insight.
+    assert.doesNotMatch(text, /\b(cotton|linen)\b/i);
+    assert.match(text, /structure|softly|crisper|smoother|drape|cleaner/i);
     assert.doesNotMatch(text, /navy harrington|ivory linen shirt/i);
     assert.doesNotMatch(text, /harrington over/i);
     assert.doesNotMatch(text, JARGON);
+  });
+
+  it("harrington/ivory/olive: spatial palette + clear structure (no quality drop)", () => {
+    const tonal = richWhy(navyIvoryOlive, "school", "mild", "tonal");
+    const silhouette = richWhy(navyIvoryOlive, "school", "mild", "silhouette");
+    assertVisualWhy(tonal, "mild");
+    assertVisualWhy(silhouette, "mild");
+
+    // First sentence keeps top → middle → bottom color roles (tonal or silhouette).
+    assert.match(tonal, /jacket/i);
+    assert.match(tonal, /shirt/i);
+    assert.match(tonal, /chinos|lower half/i);
+    assert.match(
+      silhouette,
+      /darker tone sits in the jacket.*lightens the middle.*lower half/i,
+    );
+
+    // Second sentence: observable garment relationship, not fiber/stack metaphor.
+    assert.match(tonal, /jacket adds structure.*shirt beneath falls more softly/i);
+    assert.doesNotMatch(tonal, STRUCTURE_BANS);
+    assert.doesNotMatch(tonal, /\b(cotton|linen)\b/i);
+    assert.doesNotMatch(silhouette, STRUCTURE_BANS);
+    assert.doesNotMatch(silhouette, /dark weight/i);
+
+    for (const insight of [
+      "tonal",
+      "accent",
+      "texture",
+      "silhouette",
+    ] as WhyInsight[]) {
+      const text = richWhy(navyIvoryOlive, "school", "mild", insight);
+      assertVisualWhy(text, "mild");
+      assert.doesNotMatch(text, STRUCTURE_BANS);
+      assert.doesNotMatch(text, /navy harrington|ivory linen shirt/i);
+    }
   });
 
   it("does not invent materials when fields are empty", () => {
@@ -380,5 +420,80 @@ describe("richWhy", () => {
       assertVisualWhy(line, "mild");
       assert.doesNotMatch(line, JARGON);
     }
+  });
+
+  it("imported closet: messy names, empty material/notes, still two visual sentences", () => {
+    const pieces = [
+      g({
+        id: "imp_zip",
+        name: "old nike zip",
+        category: "tops",
+        colorName: "Black",
+        hex: "#1a1a1a",
+        formality: "athletic",
+      }),
+      g({
+        id: "imp_tee",
+        name: "white uniqlo tee",
+        category: "tops",
+        colorName: "White",
+        hex: "#f7f7f4",
+        formality: "athletic",
+      }),
+      g({
+        id: "imp_cargo",
+        name: "thrifted cargos",
+        category: "bottoms",
+        colorName: "Khaki",
+        hex: "#9a8f6e",
+        formality: "casual",
+      }),
+      g({
+        id: "imp_dunk",
+        name: "dunks",
+        category: "footwear",
+        colorName: "White",
+        hex: "#f7f7f4",
+      }),
+    ];
+    const text = richWhy(pieces, "gym", "mild", "accent");
+    assertVisualWhy(text, "mild");
+    assert.match(text, /black|white|khaki/i);
+    assert.match(text, /zip|tee|cargos|sneakers/i);
+    assert.doesNotMatch(text, /old nike zip/i);
+    assert.doesNotMatch(text, /white uniqlo tee/i);
+    assert.doesNotMatch(text, /\b(cotton|linen|wool|nylon)\b/i);
+  });
+
+  it("imported closet: Custom hex refines to navy; junk name does not leak", () => {
+    const pieces = [
+      g({
+        id: "imp_j",
+        name: "jacket 2",
+        category: "outerwear",
+        colorName: "Custom",
+        hex: "#1c2a4a",
+      }),
+      g({
+        id: "imp_s",
+        name: "the shirt I wear",
+        category: "tops",
+        colorName: "Ivory",
+        hex: "#f3eee4",
+      }),
+      g({
+        id: "imp_p",
+        name: "pants",
+        category: "bottoms",
+        colorName: "Olive",
+        hex: "#5c6040",
+      }),
+    ];
+    const text = richWhy(pieces, "weekend", "mild", "texture");
+    assertVisualWhy(text, "mild");
+    assert.match(text, /navy/i);
+    assert.match(text, /ivory|olive|jacket|shirt|trousers|chinos/i);
+    assert.doesNotMatch(text, /jacket 2/i);
+    assert.doesNotMatch(text, /the shirt I wear/i);
   });
 });
