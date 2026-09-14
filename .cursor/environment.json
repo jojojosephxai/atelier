@@ -1,0 +1,14 @@
+{
+  "name": "Atelier",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "description": "Vite dev server for the Atelier app, served on http://localhost:8080"
+    }
+  ],
+  "ports": [
+    { "name": "app", "port": 8080 }
+  ]
+}
