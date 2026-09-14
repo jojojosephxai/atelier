@@ -211,14 +211,9 @@ function scrub(line: string): string {
     return "";
   }
   if (/different values|second story/i.test(t)) return "";
-  if (
-    /navy rain shell|navy polo knit|navy harrington|black merino crew|indigo denim jacket|ivory linen shirt/i.test(
-      t,
-    )
-  ) {
-    return "";
-  }
-  if (/\b(harrington|hoodie|rain shell) over\b/i.test(t)) return "";
+  // Ban title-style "type over type" restatement; pair stripping handles full names.
+  // Do not blank color+role phrases like "navy harrington" / "black crew".
+  if (/\b(harrington|hoodie|rain shell|denim jacket) over\b/i.test(t)) return "";
   return t;
 }
 
@@ -268,7 +263,10 @@ function withFeel(core: string, feel: string): string {
 
 function coloredRole(g: Garment): string {
   const c = colorOf(g);
-  const role = roleNoun(g);
+  let role = roleNoun(g);
+  // Color+role phrases should not echo seed shortNames ("navy harrington").
+  // Structure sentences still use roleNoun("harrington").
+  if (role === "harrington") role = "jacket";
   return c ? `${c.toLowerCase()} ${role}` : role;
 }
 

@@ -32,7 +32,7 @@ function sentences(text: string): string[] {
 }
 
 const JARGON =
-  /value contrast|loud break|texture break|as the ground|frames a softer|sharper outer|softer body|\w+ against [\w ]+ is (?:the |a )?(?:value |texture )?(?:contrast|break)|firmer face|easier hang|keep the stack|upper stack|\bstac(?:k|ked)\b|dark weight/i;
+  /value contrast|different values|second story|loud break|texture break|as the ground|frames a softer|sharper outer|softer body|\w+ against [\w ]+ is (?:the |a )?(?:value |texture )?(?:contrast|break)|firmer face|easier hang|keep the stack|upper stack|\bstac(?:k|ked)\b|dark weight/i;
 
 const STRUCTURE_BANS =
   /cotton outside|linen inside|keep the stack|firmer face|easier hang underneath|firmer face,? easier|dark weight|\bstac(?:k|ked)\b/i;
@@ -111,16 +111,21 @@ describe("richWhy", () => {
     assertVisualWhy(silhouette, "mild");
 
     // First sentence keeps top → middle → bottom color roles (tonal or silhouette).
-    assert.match(tonal, /jacket/i);
+    assert.match(tonal, /harrington|jacket/i);
     assert.match(tonal, /shirt/i);
     assert.match(tonal, /chinos|lower half/i);
     assert.match(
       silhouette,
-      /darker tone sits in the jacket.*lightens the middle.*lower half/i,
+      /darker tone sits in the (?:harrington|jacket).*lightens the middle.*lower half/i,
     );
 
     // Second sentence: observable garment relationship, not fiber/stack metaphor.
-    assert.match(tonal, /jacket adds structure.*shirt beneath falls more softly/i);
+    assert.match(
+      tonal,
+      /(?:harrington|jacket) adds structure.*shirt beneath falls more softly/i,
+    );
+    assert.doesNotMatch(tonal, /\bblazer\b/i);
+    assert.doesNotMatch(silhouette, /\bblazer\b/i);
     assert.doesNotMatch(tonal, STRUCTURE_BANS);
     assert.doesNotMatch(tonal, /\b(cotton|linen)\b/i);
     assert.doesNotMatch(silhouette, STRUCTURE_BANS);
@@ -422,7 +427,140 @@ describe("richWhy", () => {
     }
   });
 
-  it("imported closet: messy names, empty material/notes, still two visual sentences", () => {
+  it("denim + merino seed notes: never blazer or coat", () => {
+    const pieces = [
+      g({
+        id: "g_denim_jacket",
+        name: "Indigo denim jacket",
+        category: "outerwear",
+        colorName: "Indigo",
+        hex: "#2c3a6a",
+        material: "Denim",
+        notes: "Campus layer. Not a blazer.",
+      }),
+      g({
+        id: "g_black_merino",
+        name: "Black merino crew",
+        category: "tops",
+        colorName: "Black",
+        hex: "#1a1a1a",
+        material: "Merino",
+        notes: "Fine gauge. Works under a coat or alone.",
+      }),
+      g({
+        id: "g_black_jean",
+        name: "Black jeans",
+        category: "bottoms",
+        colorName: "Black",
+        hex: "#1a1a1a",
+        material: "Denim",
+      }),
+    ];
+    for (const insight of [
+      "tonal",
+      "accent",
+      "texture",
+      "silhouette",
+    ] as WhyInsight[]) {
+      const text = richWhy(pieces, "school", "mild", insight);
+      assertVisualWhy(text, "mild");
+      assert.doesNotMatch(text, /\bblazer\b/i);
+      assert.doesNotMatch(text, /\bcoat\b/i);
+      assert.match(text, /jacket|crew|knit|jeans/i);
+      assert.doesNotMatch(text, /different values|second story/i);
+    }
+  });
+
+  it("harrington seed notes: never blazer", () => {
+    const pieces = [
+      g({
+        id: "g_navy_harrington",
+        name: "Navy harrington",
+        category: "outerwear",
+        colorName: "Navy",
+        hex: "#1c2a4a",
+        material: "Cotton",
+        notes: "Campus jacket, not a blazer.",
+      }),
+      g({
+        id: "g_ivory_linen",
+        name: "Ivory linen shirt",
+        category: "tops",
+        colorName: "Ivory",
+        hex: "#f3eee4",
+        material: "Linen",
+      }),
+      g({
+        id: "g_olive_chino",
+        name: "Olive chinos",
+        category: "bottoms",
+        colorName: "Olive",
+        hex: "#5c6040",
+        material: "Cotton twill",
+        notes: "Soft taper. Travel trousers.",
+      }),
+    ];
+    for (const insight of [
+      "tonal",
+      "accent",
+      "texture",
+      "silhouette",
+    ] as WhyInsight[]) {
+      const text = richWhy(pieces, "school", "mild", insight);
+      assertVisualWhy(text, "mild");
+      assert.doesNotMatch(text, /\bblazer\b/i);
+      assert.match(text, /harrington|jacket|shirt|chinos/i);
+      // Why copy: shirt role, not linen fiber name-dropping.
+      assert.doesNotMatch(text, /\blinen\b/i);
+    }
+  });
+
+  it("shell + tee accent line is grammatical; no second story / different values", () => {
+    const pieces = [
+      g({
+        id: "g_rain_shell",
+        name: "Navy rain shell",
+        category: "outerwear",
+        colorName: "Navy",
+        hex: "#1c2a4a",
+        material: "Nylon",
+        notes: "Wet-weather layer, even on a mild day.",
+      }),
+      g({
+        id: "g_tee",
+        name: "Heather grey tee",
+        category: "tops",
+        colorName: "Grey",
+        hex: "#8a8a8a",
+        material: "Cotton",
+      }),
+      g({
+        id: "g_jean",
+        name: "Dark indigo jeans",
+        category: "bottoms",
+        colorName: "Indigo",
+        hex: "#2c3a6a",
+        material: "Denim",
+      }),
+      g({
+        id: "g_loafer",
+        name: "Sand loafers",
+        category: "footwear",
+        colorName: "Sand",
+        hex: "#c2a882",
+      }),
+    ];
+    const text = richWhy(pieces, "school", "mild", "accent");
+    assertVisualWhy(text, "mild");
+    assert.doesNotMatch(text, /second story|different values/i);
+    assert.match(
+      text,
+      /after the .+ shell over the .+ tee and .+ jeans below/i,
+    );
+    assert.doesNotMatch(text, /after navy shell over grey tee, then/i);
+  });
+
+    it("imported closet: messy names, empty material/notes, still two visual sentences", () => {
     const pieces = [
       g({
         id: "imp_zip",
