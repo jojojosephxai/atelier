@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { composeLooks } from "./engine.ts";
+import { composeLooks, suggestExtras } from "./engine.ts";
 import type { Brief, Extra, Garment } from "./types.ts";
 
 function garment(
@@ -333,6 +333,40 @@ describe("composeLooks", () => {
     assert.deepEqual(
       a.map((l) => l.score),
       again.map((l) => l.score),
+    );
+  });
+
+  it("suggestExtras picks citrus for warm and woody for cool", () => {
+    const warm = suggestExtras(
+      extras,
+      brief({ description: "Weekend", climate: "warm" }),
+    );
+    const cool = suggestExtras(
+      extras,
+      brief({ description: "Weekend", climate: "cool" }),
+    );
+    assert.ok(warm.some((e) => e.id === "e_citrus"));
+    assert.ok(cool.some((e) => e.id === "e_woody"));
+  });
+
+  it("rotates fragrance across multiple looks when more than one is available", () => {
+    const looks = composeLooks(
+      closet,
+      extras,
+      brief({
+        description: "Weekend errands",
+        climate: "mild",
+        occasion: "casual",
+      }),
+    );
+    if (looks.length < 2) return;
+    const frags = looks.map(
+      (l) => l.extraIds.find((id) => id.startsWith("e_citrus") || id.startsWith("e_woody")),
+    );
+    const set = new Set(frags.filter(Boolean));
+    assert.ok(
+      set.size >= Math.min(2, looks.length),
+      `expected distinct fragrances, got ${[...set].join(",")}`,
     );
   });
 });

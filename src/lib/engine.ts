@@ -231,6 +231,11 @@ function evening(desc: string): boolean {
   return /\b(evening|night|dinner|date|gala|cocktail)\b/.test(desc.toLowerCase());
 }
 
+/** Fragrance + skincare (+ grooming) picks for a brief. Used by compose and Today kits. */
+export function suggestExtras(extras: Extra[], brief: Brief): Extra[] {
+  return pickExtras(extras, brief, tokens(brief.description));
+}
+
 function pickExtras(
   extras: Extra[],
   brief: Brief,
@@ -348,6 +353,7 @@ export function composeLooks(
   const liked = new Set(opts?.likedIds ?? []);
   const skip = new Set(opts?.skipKeys ?? []);
   const banned = new Set<string>();
+  const usedExtras = new Set<string>();
   const words = tokens(brief.description);
   const picked: SuggestedLook[] = [];
 
@@ -361,6 +367,7 @@ export function composeLooks(
       worn,
       liked,
       skip,
+      usedExtras,
       !picked.some((l) =>
         l.garmentIds.some(
           (id) => garments.find((g) => g.id === id)?.category === "bags",
@@ -369,6 +376,7 @@ export function composeLooks(
     );
     if (!look) continue;
     picked.push(look);
+    for (const id of look.extraIds) usedExtras.add(id);
     const gymOn =
       brief.occasion === "athletic" ||
       /\b(gym|pe|workout)\b/.test(brief.description.toLowerCase());
@@ -397,6 +405,7 @@ function composeOne(
   worn: Set<string>,
   liked: Set<string>,
   skip: Set<string>,
+  usedExtras: Set<string>,
   allowBag: boolean,
 ): SuggestedLook | undefined {
   const gymOn =
@@ -598,7 +607,11 @@ function composeOne(
   if (outerNeed === "skip" && hasOuter) score -= 12;
   if (shortsOn && assembled.some(isCoat)) score -= 80;
 
-  const chosenExtras = pickExtras(extrasFor, brief, words);
+  const chosenExtras = pickExtras(
+    extrasFor.filter((e) => !usedExtras.has(e.id) || e.kind === "skincare"),
+    brief,
+    words,
+  );
   const copy = rationaleFor(assembled, chosenExtras, brief, incomplete);
   return {
     name: copy.name,

@@ -1,4 +1,4 @@
-import { composeLooks } from "./engine";
+import { composeLooks, suggestExtras } from "./engine";
 import {
   comboKey,
   isCoat,
@@ -126,10 +126,11 @@ export function readyLooks(
 
   const avoid = new Set(avoidIds);
   const preset = boardLooks(garments, routine, brief.climate);
+  const kitExtras = suggestExtras(extras, brief).map((e) => e.id);
   const asKit = (kit: Garment[]): SuggestedLook => ({
     name: lookName(kit, routine),
     garmentIds: kit.map((g) => g.id),
-    extraIds: [],
+    extraIds: kitExtras,
     score: 80,
     rationale: "",
     climateNotes: "",
