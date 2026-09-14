@@ -1,0 +1,12 @@
+{
+  "name": "Atelier",
+  "install": "npm ci",
+  "ports": [{ "name": "web", "port": 8080 }],
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "description": "Atelier in your browser at port 8080 (no local Node needed)"
+    }
+  ]
+}
