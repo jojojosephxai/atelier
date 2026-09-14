@@ -51,13 +51,7 @@ export function ExtraCard({
       ? extra.slot === "pm"
         ? "night"
         : "day"
-      : extra.kind === "fragrance" &&
-          (extra.family === "amber" ||
-            /evening|smoke|tonka/i.test(`${extra.name} ${extra.notes}`))
-        ? "night"
-        : extra.kind === "fragrance" && extra.family === "citrus"
-          ? "day"
-          : "core");
+      : "core");
   const body = (
     <>
       <div className="outfit-studio relative aspect-square w-full shrink-0 overflow-hidden">

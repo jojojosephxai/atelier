@@ -696,7 +696,7 @@ export function createSampleCloset(): {
     {
       id: "e_tonka",
       name: "Tonka and smoke",
-      brand: "Tom Ford",
+      brand: "Tonka Ambre",
       kind: "fragrance",
       notes: "Evening weight. Coat weather.",
       climate: ["cool", "cold"],
@@ -718,7 +718,7 @@ export function createSampleCloset(): {
     },
     {
       id: "e_balm",
-      name: "Beard balm",
+      name: "Beard oil",
       brand: "Le Labo",
       kind: "grooming",
       notes: "Sandalwood. Keep it neat, not glossy.",

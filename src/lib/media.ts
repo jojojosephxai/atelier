@@ -47,7 +47,7 @@ export function usePieceSrc(item: {
   return src;
 }
 
-const v = "v54";
+const v = "v55";
 
 export const SAMPLE_IMAGES: Record<string, string> = {
   g_navy_coat: `/sample/cut/navy-coat.webp?${v}`,
@@ -103,7 +103,7 @@ export const SAMPLE_IMAGES: Record<string, string> = {
   g_rain_shell: `/sample/cut/rain-shell.webp?${v}`,
   e_bergamot: `/sample/cut/colonia.webp?${v}`,
   e_vetiver: `/sample/cut/vetiver.webp?${v}`,
-  e_tonka: `/sample/cut/tobacco-vanille.webp?${v}`,
+  e_tonka: `/sample/cut/tonka-ambre.webp?${v}`,
   e_cleanser: `/sample/cut/cerave-cleanser.webp?${v}`,
   e_vitc: `/sample/cut/skinceuticals-ce.webp?${v}`,
   e_moist: `/sample/cut/lrp-moist.webp?${v}`,

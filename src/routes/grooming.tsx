@@ -162,13 +162,14 @@ function GroomingPage() {
       {bottles.length ? (
         <section>
           <h2 className="font-display text-3xl leading-none text-fg italic">
-            Bottles
+            Fragrance & finish
           </h2>
           <div className="groom-grid mt-3">
             {bottles.map((e, i) => (
               <ExtraCard
                 key={`bot-${e.id}`}
                 extra={e}
+                tone="core"
                 eager={i < 4}
                 onClick={() => openEdit(e)}
               />

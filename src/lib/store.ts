@@ -128,8 +128,12 @@ function normalizeGarment(g: Garment): Garment {
 
 function normalizeExtra(e: Extra): Extra {
   const sample = createSampleCloset().extras.find((x) => x.id === e.id);
+  const catalog = sample && SAMPLE_IMAGES[e.id]
+    ? { name: sample.name, brand: sample.brand }
+    : null;
   return bindPhotoFields({
     ...e,
+    ...catalog,
     tags: Array.isArray(e.tags) ? e.tags : [],
     slot: e.slot ?? sample?.slot,
     step: e.step ?? sample?.step,

@@ -276,17 +276,15 @@ html[data-theme="dark"] {
     box-sizing: border-box;
   }
 
+  /* Match baked sample plate #f7f2e8 so opaque product photos don't read as boxes. */
   .groom-tile .outfit-studio {
-    background: #f3eee6;
+    background: #f7f2e8;
   }
 
   .groom-tile[data-tone="day"] .outfit-studio,
-  .groom-tile[data-tone="night"] .outfit-studio {
-    background: #f3eee6;
-  }
-
+  .groom-tile[data-tone="night"] .outfit-studio,
   .groom-tile[data-tone="core"] .outfit-studio {
-    background: #ebe4d6;
+    background: #f7f2e8;
   }
 
   .groom-tile .outfit-studio img,
