@@ -1,7 +1,7 @@
 import type { RoutineId } from "./routines.ts";
-import type { Climate, Garment } from "./types.ts";
+import { FORMALITY_RANK, type Climate, type Garment } from "./types.ts";
 
-/** Insight angle — three Today cards should use three different ones. */
+/** Insight angle — three Today cards must use three different architectures. */
 export type WhyInsight = "tonal" | "accent" | "texture" | "silhouette";
 
 export const WHY_INSIGHTS: WhyInsight[] = [
@@ -11,11 +11,19 @@ export const WHY_INSIGHTS: WhyInsight[] = [
   "silhouette",
 ];
 
-const FILLER =
-  /\b(comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer)\b/i;
+/** Phrases and shells that read as design-system jargon, not fashion copy. */
+const JARGON =
+  /\b(value contrast|loud break|texture break|mute (?:value )?shift|supporting breaks|as the ground|frames a softer|sharper outer|softer body|one mute register|depthRead|psychologically|comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer)\b/i;
+
+/** Forced diagnostic templates — ban entirely. */
+const FORBIDDEN_SHELL =
+  /\b\w+\s+against\s+[\w\s]+\bis (?:the |a )?(?:value |texture |mute |loud |soft )?(?:contrast|break)\b/i;
 
 const FIT_RE =
-  /\b(relaxed|oversized|fitted|straight(?:-leg)?|slim|cropped|tailored|loose|boxy|skinny|wide|knee[- ]length)\b/i;
+  /\b(relaxed|oversized|fitted|straight(?:-leg)?|slim|cropped|tailored|loose|boxy|skinny|wide(?:-leg)?|knee[- ]length|baggy|flared|bootcut|taper(?:ed)?|boyfriend)\b/i;
+
+const GARMENT_WORD =
+  /\b(jacket|coat|shell|hoodie|zip|tee|shirt|knit|crew|polo|jeans?|chinos?|trousers|joggers?|shorts?|sneakers?|trainers?|boots?|shoes|cargos?|skirt|blazer|parka|sweater)\b/i;
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const c = hex.replace("#", "");
@@ -102,6 +110,7 @@ function colorOf(g: Garment): string {
   return (g.colorName || "").trim();
 }
 
+/** Material only from the garment field — never invent from appearance. */
 function matOf(g: Garment): string {
   return (g.material || "").trim();
 }
@@ -121,6 +130,18 @@ function sameFamily(a: Garment, b: Garment): boolean {
     return Math.abs(la - lb) < 0.12;
   }
   return hueSpan(a, b) < 28 && Math.abs(la - lb) < 0.2;
+}
+
+function lightOf(g: Garment): number {
+  return hexToHsl(g.hex).l;
+}
+
+function isLight(g: Garment): boolean {
+  return lightOf(g) > 0.72 || /white|ivory|cream|sand|beige/i.test(colorOf(g));
+}
+
+function isDark(g: Garment): boolean {
+  return lightOf(g) < 0.28 || /navy|black|charcoal|indigo/i.test(colorOf(g));
 }
 
 function fitOf(pieces: Garment[]): string {
@@ -145,10 +166,10 @@ function endSentence(clause: string): string {
 
 function scrub(line: string): string {
   const t = line.replace(/\s+/g, " ").trim();
-  if (!t || FILLER.test(t)) return "";
+  if (!t || JARGON.test(t) || FORBIDDEN_SHELL.test(t)) return "";
   if (/is the wet-weather|even on a mild/i.test(t)) return "";
   if (
-    /navy rain shell|navy polo knit|navy harrington|black merino crew|indigo denim jacket/i.test(
+    /navy rain shell|navy polo knit|navy harrington|black merino crew|indigo denim jacket|ivory linen shirt/i.test(
       t,
     )
   ) {
@@ -158,26 +179,34 @@ function scrub(line: string): string {
   return t;
 }
 
-function depthRead(color: string): string {
-  const c = color.toLowerCase();
-  if (/navy/.test(c)) return "contained depth because contrast stays low";
-  if (/black/.test(c)) return "dense weight because the values stay closed";
-  if (/charcoal|grey|gray|heather/.test(c)) {
-    return "quiet mid-tone weight because nothing spikes";
+/** Overall palette feel — only when the kit earns it. */
+function paletteFeel(pieces: Garment[]): string {
+  const colors = pieces.map(colorOf).filter(Boolean).map((c) => c.toLowerCase());
+  const hasOlive = colors.some((c) => /olive|forest|khaki|green/.test(c));
+  const neutrals = pieces.filter((g) => isNeutralHex(g.hex));
+  const lights = pieces.filter(isLight);
+  const darks = pieces.filter(isDark);
+  if (hasOlive && neutrals.length >= 2) return "earthy and muted";
+  if (darks.length >= 2 && lights.length === 0) return "tonal and closed";
+  if (lights.length >= 1 && darks.length >= 1 && neutrals.length >= 2) {
+    return "quiet contrast, still muted";
   }
-  if (/indigo|blue/.test(c)) {
-    return "cool depth because the field stays continuous";
+  if (neutrals.length === pieces.filter((g) => colorOf(g)).length) {
+    return "muted throughout";
   }
-  if (/olive|forest|green/.test(c)) {
-    return "earthy hold because the chroma stays mute";
-  }
-  if (/white|ivory/.test(c)) return "open light against a darker field";
-  if (/beige|cream|camel|sand|stone|khaki/.test(c)) {
-    return "warm ground because the chroma stays low";
-  }
-  return "a tighter field because nothing spikes";
+  return "";
 }
 
+function coloredRole(g: Garment): string {
+  const c = colorOf(g);
+  const role = roleNoun(g);
+  return c ? `${c.toLowerCase()} ${role}` : role;
+}
+
+/**
+ * Palette sentence — architecture keyed by insight so Today cards do not share a shell.
+ * Order preference: what you see first → what contrasts → what ties it together.
+ */
 function paletteSentence(
   pieces: Garment[],
   insight: WhyInsight,
@@ -188,36 +217,94 @@ function paletteSentence(
   const bottom = bottomOf(pieces);
   const shoes = shoesOf(pieces);
   const layer = layerOf(pieces);
+  const feel = paletteFeel(pieces);
 
-  if (insight === "accent" && shoes && top && colorOf(shoes)) {
-    const shoeC = colorOf(shoes);
-    if (outer && top && sameFamily(outer, top) && bottom) {
-      const c = colorOf(outer) || colorOf(top);
+  // --- accent: open on the break piece ---
+  if (insight === "accent") {
+    if (shoes && colorOf(shoes) && (outer || top)) {
+      const upper = outer && top && sameFamily(outer, top)
+        ? `${colorOf(outer || top!).toLowerCase()} through the ${roleNoun(outer ?? top!)}${top && outer ? ` and ${roleNoun(top)}` : ""}`
+        : outer && top
+          ? `${coloredRole(outer)} over ${coloredRole(top)}`
+          : coloredRole(outer ?? top!);
+      const low = bottom
+        ? `, then ${coloredRole(bottom)} below`
+        : "";
       return scrub(
-        `Tonal ${c.toLowerCase()} on the ${roleNoun(outer)} and ${roleNoun(top)} keeps ${depthRead(c)}, with ${colorOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} and ${shoeC.toLowerCase()} at the ${roleNoun(shoes)} as supporting breaks`,
+        `${colorOf(shoes)} at the ${roleNoun(shoes)} lifts the line after ${upper}${low}`,
       );
     }
-    if (outer && top && sameFamily(outer, top)) {
-      const c = colorOf(outer) || colorOf(top);
+    if (bottom && top && !sameFamily(top, bottom)) {
       return scrub(
-        `Tonal ${c.toLowerCase()} through the ${roleNoun(outer)} and ${roleNoun(top)} — ${depthRead(c)}; ${shoeC.toLowerCase()} at the ${roleNoun(shoes)} is the accent break`,
+        `${coloredRole(bottom)} break the quieter ${colorOf(top).toLowerCase() || "upper"} stack and keep the eye moving down`,
       );
     }
   }
 
+  // --- silhouette: open on vertical color mass / proportion of color ---
+  if (insight === "silhouette") {
+    if (outer && top && bottom) {
+      if (isDark(outer) && isLight(top)) {
+        return scrub(
+          `Dark weight sits in the ${roleNoun(outer)}, ${colorOf(top).toLowerCase()} lightens the middle, and ${coloredRole(bottom)} hold the lower half`,
+        );
+      }
+      if (sameFamily(outer, top)) {
+        return scrub(
+          `Most of the mass stays ${colorOf(outer).toLowerCase()} up top, with ${coloredRole(bottom)} carrying the lower half`,
+        );
+      }
+      return scrub(
+        `Color stacks ${colorOf(outer).toLowerCase()} outside, ${colorOf(top).toLowerCase()} through the ${roleNoun(top)}, ${colorOf(bottom).toLowerCase()} below`,
+      );
+    }
+    if (layer && top && bottom) {
+      return scrub(
+        `Volume and ${colorOf(layer).toLowerCase()} sit up top, then ${coloredRole(bottom)} clean the lower half`,
+      );
+    }
+  }
+
+  // --- texture: open on what the eye hits first (often the light plane) ---
+  if (insight === "texture") {
+    if (outer && top && isLight(top) && isDark(outer)) {
+      const verb = bottom && /s$/.test(roleNoun(bottom)) ? "keep" : "keeps";
+      const bottomBit = bottom
+        ? `; ${coloredRole(bottom)} ${verb} the lower half steadier`
+        : "";
+      return scrub(
+        `${colorOf(top)} in the ${roleNoun(top)} opens under the ${coloredRole(outer)}${bottomBit}`,
+      );
+    }
+    if (outer && top && !sameFamily(outer, top)) {
+      const tie = feel ? ` — ${feel}` : "";
+      return scrub(
+        `You see ${coloredRole(outer)} first, then ${coloredRole(top)} inside${bottom ? `, tied by ${coloredRole(bottom)}` : ""}${tie}`,
+      );
+    }
+    if (top && bottom) {
+      return scrub(
+        `${coloredRole(top)} meets ${coloredRole(bottom)} — ${feel || "related tones, not a costume break"}`,
+      );
+    }
+  }
+
+  // --- tonal (default): continuous field, then the shift ---
   if (outer && top && sameFamily(outer, top)) {
     const c = colorOf(outer) || colorOf(top);
     if (bottom && !sameFamily(top, bottom)) {
+      const shoeBit =
+        shoes && colorOf(shoes) && !sameFamily(top, shoes)
+          ? `, ${colorOf(shoes).toLowerCase()} finishing at the ${roleNoun(shoes)}`
+          : "";
       return scrub(
-        `Tonal ${c.toLowerCase()} on the ${roleNoun(outer)} and ${roleNoun(top)} keeps ${depthRead(c)}; ${colorOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} is the mute shift below`,
+        `${c} runs through the ${roleNoun(outer)} and ${roleNoun(top)}, then ${coloredRole(bottom)} take the lower half${shoeBit}`,
       );
     }
     return scrub(
-      `Tonal ${c.toLowerCase()} on the ${roleNoun(outer)} and ${roleNoun(top)} keeps ${depthRead(c)} in one register${
-        bottom
-          ? `, with ${colorOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} as a darker continuation`
-          : ""
-      }`,
+      `${c} holds the ${roleNoun(outer)} and ${roleNoun(top)} in one quiet field${
+        bottom ? `, continued by ${coloredRole(bottom)}` : ""
+      }${feel ? ` — ${feel}` : ""}`,
     );
   }
 
@@ -225,8 +312,19 @@ function paletteSentence(
     const oc = colorOf(outer);
     const tc = colorOf(top);
     if (oc && tc && oc.toLowerCase() !== tc.toLowerCase()) {
+      if (isLight(top) && isDark(outer)) {
+        return scrub(
+          `${oc} holds the ${roleNoun(outer)} while ${tc.toLowerCase()} opens through the ${roleNoun(top)}${
+            bottom
+              ? `, and ${coloredRole(bottom)} quiet the lower half`
+              : ""
+          }${feel ? ` — ${feel}` : ""}`,
+        );
+      }
       return scrub(
-        `${oc} against ${tc.toLowerCase()} is value contrast rather than a loud break`,
+        `${coloredRole(outer)} and ${coloredRole(top)} sit in different values${
+          bottom ? `, with ${coloredRole(bottom)} steadying the lower half` : ""
+        }${feel ? ` — ${feel}` : ""}`,
       );
     }
   }
@@ -236,12 +334,14 @@ function paletteSentence(
     const tc = colorOf(top);
     if (lc && tc && sameFamily(layer, top)) {
       return scrub(
-        `Tonal ${lc.toLowerCase()} through the upper stack — monochrome weight rather than a contrast break`,
+        `${lc} stays continuous through the ${roleNoun(layer)} and ${roleNoun(top)} — one field, not a costume change`,
       );
     }
     if (lc && tc) {
       return scrub(
-        `${lc} against ${tc.toLowerCase()} is a mute value shift, not a loud accent`,
+        `${coloredRole(layer)} over ${coloredRole(top)} keeps the upper half simple${
+          bottom ? `, then ${coloredRole(bottom)} finish below` : ""
+        }`,
       );
     }
   }
@@ -251,25 +351,24 @@ function paletteSentence(
     const bc = colorOf(bottom);
     if (tc && bc && sameFamily(top, bottom)) {
       return scrub(
-        `Tonal ${tc.toLowerCase()} down the line stays in one register — ${depthRead(tc)}`,
+        `${tc} carries from the ${roleNoun(top)} into the ${roleNoun(bottom)} without jumping`,
       );
     }
     if (tc && bc) {
-      if (isNeutralHex(top.hex) && isNeutralHex(bottom.hex)) {
-        return scrub(
-          `${tc} and ${bc.toLowerCase()} stay in one mute register, ${depthRead(tc)}`,
-        );
-      }
       return scrub(
-        `${tc} lands on ${bc.toLowerCase()} below — ${depthRead(tc)} meeting steadier ground`,
+        `${coloredRole(top)} lands on ${coloredRole(bottom)}${
+          feel ? ` — ${feel}` : ""
+        }`,
       );
     }
   }
 
   if (climate === "rain" && outer) {
-    const c = colorOf(outer) || (top ? colorOf(top) : "");
+    const c = colorOf(outer) || (top ? colorOf(top) : "navy");
     return scrub(
-      `Tonal ${(c || "navy").toLowerCase()} stacked on ${(c || "navy").toLowerCase()} keeps ${depthRead(c || "navy")}`,
+      `${c} stays continuous through the ${roleNoun(outer)}${
+        top ? ` and ${roleNoun(top)}` : ""
+      }`,
     );
   }
 
@@ -282,20 +381,24 @@ function paletteSentence(
     .slice(0, 2);
   if (colors.length === 2) {
     return scrub(
-      `${colors[0]} and ${colors[1]!.toLowerCase()} share one mute register across the kit`,
+      `${colors[0]} and ${colors[1]!.toLowerCase()} share the kit without fighting${
+        feel ? ` — ${feel}` : ""
+      }`,
     );
   }
   if (colors.length === 1) {
-    return scrub(
-      `Tonal ${colors[0]!.toLowerCase()} holds the field — ${depthRead(colors[0]!)}`,
-    );
+    return scrub(`${colors[0]} holds most of what you see`);
   }
-  return scrub("The palette stays in one mute register");
+  return scrub("The colors stay related across the kit");
 }
 
+/**
+ * Structure sentence — second architecture keyed by insight.
+ * Materials named only when both garments have material fields.
+ */
 function structureSentence(
   pieces: Garment[],
-  _insight: WhyInsight,
+  insight: WhyInsight,
   routine: RoutineId,
   climate: Climate,
 ): string {
@@ -303,35 +406,96 @@ function structureSentence(
   const top = topOf(pieces);
   const bottom = bottomOf(pieces);
   const layer = layerOf(pieces);
+  const shoes = shoesOf(pieces);
   const sil = fitOf(pieces);
 
-  if (outer && top) {
-    const tech = /nylon|shell|technical/i.test(`${matOf(outer)} ${outer.name}`);
-    const soft = /knit|merino|jersey|cotton|fleece|linen/i.test(
-      `${matOf(top)} ${top.name}`,
-    );
-    if (tech && soft) {
+  const matsDiffer = (a: Garment, b: Garment) => {
+    const ma = matOf(a);
+    const mb = matOf(b);
+    return Boolean(ma && mb && ma.toLowerCase() !== mb.toLowerCase());
+  };
+
+  // --- silhouette insight: fit / volume leads ---
+  if (insight === "silhouette") {
+    if (sil && outer && top) {
+      return scrub(
+        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} cut through the ${roleNoun(outer)} leaves room so the ${roleNoun(top)} can hang without fighting the outer line`,
+      );
+    }
+    if (sil && bottom) {
+      return scrub(
+        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} ${roleNoun(bottom)} keep the proportion steady so the upper half can stay easier`,
+      );
+    }
+    if (layer && bottom) {
+      const oversized =
+        sil === "oversized" || /oversized/i.test(`${layer.name} ${layer.notes}`);
+      if (oversized) {
+        return scrub(
+          `Oversized fleece adds volume up top so the ${roleNoun(bottom)} can stay closer and athletic underneath`,
+        );
+      }
+    }
+  }
+
+  // --- texture insight: hand / fabric when data supports it ---
+  if (insight === "texture") {
+    if (outer && top && matsDiffer(outer, top)) {
       if (climate === "rain") {
         return scrub(
-          `Nylon against cotton knit is the texture break, so the shell face stays crisp in rain rather than going dull`,
+          `${matOf(outer)} in the ${roleNoun(outer)} stays crisp over ${matOf(top).toLowerCase()} in rain`,
         );
       }
       return scrub(
-        `Nylon against cotton knit is the texture break, so the outline stays sharp while the body stays soft`,
+        `${matOf(outer)} in the ${roleNoun(outer)} reads firmer than ${matOf(top).toLowerCase()} in the ${roleNoun(top)}, so structure sits outside and ease stays through the middle`,
       );
     }
-    if (matOf(outer) && matOf(top) && matOf(outer).toLowerCase() !== matOf(top).toLowerCase()) {
+    if (top && bottom && matsDiffer(top, bottom)) {
       return scrub(
-        `${matOf(outer)} against ${matOf(top).toLowerCase()} is the texture break, so a sharper outer frames a softer body`,
+        `${matOf(top)} in the ${roleNoun(top)} and ${matOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} keep the halves related without matching`,
+      );
+    }
+    // No material data: talk structure without inventing fabric names
+    if (outer && top) {
+      return scrub(
+        `The ${roleNoun(outer)} holds a cleaner outer line while the ${roleNoun(top)} stays easier underneath`,
+      );
+    }
+  }
+
+  // --- accent insight: how the line finishes ---
+  if (insight === "accent") {
+    if (shoes && bottom) {
+      return scrub(
+        `${roleNoun(bottom).charAt(0).toUpperCase()}${roleNoun(bottom).slice(1)} keep the hang clean so the ${roleNoun(shoes)} read as the finish, not a second story`,
+      );
+    }
+    if (shoes) {
+      return scrub(
+        `The ${roleNoun(shoes)} close the outline after the upper stack does the quieter work`,
+      );
+    }
+    if (bottom && top) {
+      return scrub(
+        `The ${roleNoun(bottom)} finish the proportion so the ${roleNoun(top)} does not have to carry the whole look`,
+      );
+    }
+  }
+
+  // --- tonal (default): continuity of hang / slight psychology ---
+  if (outer && top) {
+    if (matsDiffer(outer, top)) {
+      return scrub(
+        `${matOf(outer)} outside and ${matOf(top).toLowerCase()} inside keep the stack layered — firmer face, easier hang underneath`,
       );
     }
     if (sil) {
       return scrub(
-        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} cut keeps volume easy, so the inner layer hangs cleaner under a sharper frame rather than fighting it`,
+        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} proportion links the ${roleNoun(outer)} to the ${roleNoun(top)} so the hang reads as one kit`,
       );
     }
     return scrub(
-      `A sharper outer line keeps structure outside, so the body hangs softer underneath rather than flattening the stack`,
+      `The ${roleNoun(outer)} sets the outer outline and the ${roleNoun(top)} stays secondary underneath rather than competing`,
     );
   }
 
@@ -340,50 +504,46 @@ function structureSentence(
       sil === "oversized" || /oversized/i.test(`${layer.name} ${layer.notes}`);
     if (oversized && bottom) {
       return scrub(
-        `Oversized fleece adds volume up top, so the ${roleNoun(bottom)} keep a cleaner athletic hang underneath`,
+        `Oversized fleece adds volume up top so the ${roleNoun(bottom)} keep a cleaner athletic hang underneath`,
       );
     }
     if (bottom) {
       return scrub(
-        `Fleece against a closer cotton layer is the soft break, so the ${roleNoun(bottom)} finish the athletic outline`,
+        `The ${roleNoun(layer)} softens the upper half while the ${roleNoun(bottom)} finish the athletic outline`,
       );
     }
     return scrub(
-      `Oversized fleece adds volume, so the athletic outline hangs ready to move rather than going tight`,
+      `Fleece volume up top keeps the kit ready to move rather than going tight`,
     );
   }
 
   if (top && bottom) {
-    const tm = matOf(top);
-    const bm = matOf(bottom);
-    if (tm && bm && tm.toLowerCase() !== bm.toLowerCase()) {
+    if (matsDiffer(top, bottom)) {
       return scrub(
-        `${tm} against ${bm.toLowerCase()} is the texture break, so the ${roleNoun(top)} and ${roleNoun(bottom)} hang as related rather than matched`,
+        `${matOf(top)} and ${matOf(bottom).toLowerCase()} hang as related halves rather than a matched set`,
       );
     }
     if (sil) {
       return scrub(
-        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} cut links both halves, so the outline reads as one hang rather than two pieces`,
+        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} cut links both halves so the outline reads as one hang`,
       );
     }
     if (routine === "gym") {
       return scrub(
-        `Athletic cut through the line keeps volume ready, so the kit hangs to move rather than to pose`,
+        `Athletic cut through the line keeps the kit ready to move rather than to pose`,
       );
     }
     return scrub(
-      `Proportions link both halves, so the outline hangs as one rather than two separate pieces`,
+      `Proportions link both halves so the outline hangs as one rather than two separate pieces`,
     );
   }
 
   if (outer) {
     return scrub(
-      `The ${roleNoun(outer)} sets the outer outline, so everything under it stays secondary rather than competing`,
+      `The ${roleNoun(outer)} sets the outer outline so everything under it stays secondary`,
     );
   }
-  return scrub(
-    "Structure holds as one outline, so the hang reads stacked rather than flat",
-  );
+  return scrub("The hang reads stacked rather than flat");
 }
 
 function wordCount(text: string): number {
@@ -402,10 +562,23 @@ function clampWords(text: string, max = 50): string {
   return t;
 }
 
+/** First few words — used to detect identical sentence shells across a set. */
+export function whyOpeningFingerprint(line: string): string {
+  const first = (line.match(/[^.!?]+/)?.[0] ?? line)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" ");
+  return first;
+}
+
 /**
  * Exactly two visual sentences: palette relationship, then structure/texture.
- * `insight` shifts which relationship leads so a set of three looks stays distinct.
- * Climate may add a brief visual rain note only when the brief is rain/snow.
+ * `insight` selects a distinct sentence architecture (not synonym swaps).
+ * Climate may add a brief rain note only when the brief is rain/snow.
  */
 export function richWhy(
   pieces: Garment[],
@@ -416,30 +589,18 @@ export function richWhy(
   if (!pieces.length) return "";
   const routine = asRoutine(String(occasion));
 
-  const shoes = shoesOf(pieces);
-  let focus = insight;
-  if (
-    insight === "tonal" &&
-    shoes &&
-    /white|ivory/i.test(colorOf(shoes)) &&
-    bottomOf(pieces)
-  ) {
-    focus = "accent";
-  }
-
   const s1 =
-    scrub(paletteSentence(pieces, focus, climate) || "") ||
-    "Tonal neutrals stay in one mute register across the kit";
+    scrub(paletteSentence(pieces, insight, climate) || "") ||
+    "The colors stay related across the kit";
   const s2 =
-    scrub(structureSentence(pieces, focus, routine, climate) || "") ||
-    "Texture and outline hold together, so the hang reads as one rather than apart";
+    scrub(structureSentence(pieces, insight, routine, climate) || "") ||
+    "The hang reads stacked rather than flat";
 
   let text = [endSentence(s1), endSentence(s2)].join(" ");
 
   if (wordCount(text) < 18) {
     text = `${text} ${endSentence("so the hang reads stacked rather than flat")}`.trim();
     text = clampWords(text, 50);
-    // Re-trim to two sentences after pad
     const bits = text.match(/[^.!?]+[.!?]+/g) ?? [text];
     text = bits.slice(0, 2).join(" ");
   }

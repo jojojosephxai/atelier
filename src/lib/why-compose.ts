@@ -2,6 +2,7 @@ import { isCampusJacket, isGymLayer } from "./board-set";
 import {
   insightForIndex,
   richWhy,
+  whyOpeningFingerprint,
   type WhyInsight,
   WHY_INSIGHTS,
 } from "./rich-why.ts";
@@ -28,9 +29,9 @@ const SLOTS: WhyKey[] = [
 /** Map legacy why keys → visual insight angles for copy. */
 function insightFromKey(key: WhyKey, i = 0): WhyInsight {
   if (key === "color_or_texture_contrast" || key === "color" || key === "cloth") {
-    return i % 2 === 0 ? "texture" : "tonal";
+    return "texture";
   }
-  if (key === "climate_layer") return "texture";
+  if (key === "climate_layer") return "accent";
   if (key === "garment_role") return "silhouette";
   if (key === "occasion_formality") return "tonal";
   if (key === "footwear") return "accent";
@@ -40,7 +41,7 @@ function insightFromKey(key: WhyKey, i = 0): WhyInsight {
 type Candidate = { key: WhyKey; line: string; score: number };
 
 const BANNED =
-  /\b(comfortable|casual|good for school|calm and composed|wet-weather|mild day)\b|AC[-\s]?shell/i;
+  /\b(comfortable|casual|good for school|calm and composed|wet-weather|mild day|value contrast|texture break|loud break|frames a softer|as the ground)\b|AC[-\s]?shell/i;
 
 function topOf(pieces: Garment[]) {
   return pieces.find((g) => g.category === "tops" && !isGymLayer(g));
@@ -76,19 +77,21 @@ function hangTogether(a: Garment, b: Garment): string | null {
     !mal.includes(mbl) &&
     !mbl.includes(mal);
   if (tex) {
-    return `${a.material} against ${b.material.toLowerCase()} is the texture break.`;
+    return `${ma} outside and ${mb.toLowerCase()} inside keep the stack layered.`;
   }
   if (isNeutralHex(a.hex) && isNeutralHex(b.hex)) {
-    return `${a.colorName} and ${b.colorName.toLowerCase()} stay in one mute register.`;
+    return `${a.colorName} and ${b.colorName.toLowerCase()} stay quiet together.`;
   }
   if (
-    /wool|merino|knit|fleece/i.test(`${ma} ${a.name}`) &&
-    /linen/i.test(`${mb} ${b.name}`)
+    ma &&
+    mb &&
+    /wool|merino|knit|fleece/i.test(ma) &&
+    /linen/i.test(mb)
   ) {
-    return "Warm wool against open linen — heat escapes, outline stays.";
+    return `${ma} over ${mb.toLowerCase()} — warmer face, easier shirt underneath.`;
   }
   if (ma && mb) {
-    return `${a.material} against ${b.material.toLowerCase()} is the texture break.`;
+    return `${ma} and ${mb.toLowerCase()} hang as related halves.`;
   }
   return null;
 }
@@ -445,17 +448,34 @@ export function whyForSet(
   climate: Climate,
 ): string[] {
   const insights = assignInsights(looks, routine, climate);
-  const seen = new Set<string>();
+  const seenLines = new Set<string>();
+  const seenOpenings = new Set<string>();
+  const usedInsights = new Set<WhyInsight>();
   return looks.map((pieces, i) => {
     let insight = insights[i] ?? insightForIndex(i);
-    let line = richWhy(pieces, routine, climate, insight);
-    // If two cards somehow collide, rotate insight once
-    if (seen.has(line)) {
-      const next = WHY_INSIGHTS.find((x) => x !== insight) ?? insight;
-      line = richWhy(pieces, routine, climate, next);
-      insight = next;
+    if (usedInsights.has(insight)) {
+      insight =
+        WHY_INSIGHTS.find((x) => !usedInsights.has(x)) ?? insight;
     }
-    seen.add(line);
+    let line = richWhy(pieces, routine, climate, insight);
+    let opening = whyOpeningFingerprint(line);
+    // Rotate until line and opening shell are unique across the three cards
+    if (seenLines.has(line) || seenOpenings.has(opening)) {
+      for (const next of WHY_INSIGHTS) {
+        if (usedInsights.has(next) && next !== insight) continue;
+        const alt = richWhy(pieces, routine, climate, next);
+        const altOpen = whyOpeningFingerprint(alt);
+        if (!seenLines.has(alt) && !seenOpenings.has(altOpen)) {
+          line = alt;
+          opening = altOpen;
+          insight = next;
+          break;
+        }
+      }
+    }
+    usedInsights.add(insight);
+    seenLines.add(line);
+    seenOpenings.add(opening);
     return line;
   });
 }
