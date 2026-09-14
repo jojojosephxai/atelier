@@ -1,9 +1,15 @@
 import { isCampusJacket, isGymLayer } from "./board-set";
-import { richWhy } from "./rich-why";
+import {
+  insightForIndex,
+  richWhy,
+  type WhyInsight,
+  WHY_INSIGHTS,
+} from "./rich-why.ts";
 import type { RoutineId } from "./routines";
 import type { Climate, Garment } from "./types";
 import { isNeutralHex } from "./utils";
 
+/** Primary keys for voting / suppression — still one distinct key per look. */
 export type WhyKey =
   | "occasion_formality"
   | "climate_layer"
@@ -19,10 +25,22 @@ const SLOTS: WhyKey[] = [
   "color_or_texture_contrast",
 ];
 
+/** Map legacy why keys → visual insight angles for copy. */
+function insightFromKey(key: WhyKey, i = 0): WhyInsight {
+  if (key === "color_or_texture_contrast" || key === "color" || key === "cloth") {
+    return i % 2 === 0 ? "texture" : "tonal";
+  }
+  if (key === "climate_layer") return "texture";
+  if (key === "garment_role") return "silhouette";
+  if (key === "occasion_formality") return "tonal";
+  if (key === "footwear") return "accent";
+  return insightForIndex(i);
+}
+
 type Candidate = { key: WhyKey; line: string; score: number };
 
 const BANNED =
-  /\b(comfortable|casual|good for school)\b|AC[-\s]?shell/i;
+  /\b(comfortable|casual|good for school|calm and composed|wet-weather|mild day)\b|AC[-\s]?shell/i;
 
 function topOf(pieces: Garment[]) {
   return pieces.find((g) => g.category === "tops" && !isGymLayer(g));
@@ -69,13 +87,10 @@ function hangTogether(a: Garment, b: Garment): string | null {
   ) {
     return "Warm wool against open linen — heat escapes, outline stays.";
   }
-  if (a.category === "outerwear" || isGymLayer(a)) {
-    return `${a.name} keeps ${b.name.toLowerCase()} from reading unfinished.`;
-  }
   if (ma && mb) {
     return `${a.material} against ${b.material.toLowerCase()} is the texture break.`;
   }
-  return `${a.name} keeps ${b.name.toLowerCase()} from reading unfinished.`;
+  return null;
 }
 
 export function whyCandidates(
@@ -93,16 +108,13 @@ export function whyCandidates(
     const shoes = pieces.find((g) => g.category === "footwear");
     if (top && bottom) {
       const line = hangTogether(top, bottom);
-      if (line) {
-        out.push({ key: "color", score: 3, line });
-      }
+      if (line) out.push({ key: "color", score: 3, line });
     }
     if (shoes) {
-      const black = /black/i.test(`${shoes.name} ${shoes.colorName}`);
       out.push({
         key: "footwear",
         score: 2,
-        line: black
+        line: /black/i.test(`${shoes.name} ${shoes.colorName}`)
           ? "Black mesh trainers stay on the court. No leather."
           : "White mesh trainers stay on the court. No leather.",
       });
@@ -119,15 +131,15 @@ export function whyCandidates(
         key: "climate_layer",
         score: 3,
         line: /hoodie/i.test(layer.name)
-          ? `${layer.name} is the cold gym layer — fleece, not a coat.`
-          : `${layer.name} over a ${top.name.toLowerCase()} is the cold gym layer.`,
+          ? "Fleece hoodie over a tee — gym layer, not a coat."
+          : "Quarter-zip over a tee — gym layer, not a jacket.",
       });
       out.push({
         key: "occasion_formality",
         score: 2,
         line: /quarter[-\s]?zip/i.test(layer.name)
-          ? `${layer.name} is the lighter cold layer — it zips, it is not a jacket.`
-          : `${layer.name} is fleece, not a coat.`,
+          ? "The zip layer stays lighter than a jacket."
+          : "Fleece, not a coat.",
       });
     }
     return out.filter((c) => clean(c.line));
@@ -138,7 +150,7 @@ export function whyCandidates(
       pinnedWhy([outer, top]) ?? {
         key: "occasion_formality",
         score: 3,
-        line: `${outer.name} over a ${top.name.toLowerCase()} — school, not office.`,
+        line: "Indigo denim over a knit — school register, not office.",
       },
     );
   }
@@ -146,7 +158,7 @@ export function whyCandidates(
     out.push({
       key: "climate_layer",
       score: 3,
-      line: `${outer.name} over a ${top.name.toLowerCase()} is the wet-weather layer, even on a mild day.`,
+      line: "Technical shell over a soft knit — crisp edge, easier body.",
     });
   }
   if (outer && /harrington/i.test(outer.name) && top) {
@@ -154,7 +166,7 @@ export function whyCandidates(
       pinnedWhy([outer, top]) ?? {
         key: "garment_role",
         score: 3,
-        line: `${outer.name} over a ${top.name.toLowerCase()} is the campus jacket, not a blazer.`,
+        line: "Harrington over a crew — campus jacket line, not a blazer.",
       },
     );
   }
@@ -162,7 +174,7 @@ export function whyCandidates(
     out.push({
       key: "climate_layer",
       score: 2,
-      line: `${top.name} is enough. No extra layer on a mild day.`,
+      line: "Open top line — no extra outer layer in the stack.",
     });
   }
   if (outer && top) {
@@ -341,14 +353,14 @@ function pinnedWhy(pieces: Garment[]): Candidate | null {
     return {
       key: "garment_role",
       score: 4,
-      line: "Navy harrington over a black merino crew is the campus jacket, not a blazer.",
+      line: "Harrington over merino — campus jacket line, not a blazer.",
     };
   }
   if (/denim jacket/i.test(outer.name) && merinoTop(top)) {
     return {
       key: "occasion_formality",
       score: 4,
-      line: "Indigo denim jacket over a black merino crew — school, not office.",
+      line: "Indigo denim over merino — school register, not office.",
     };
   }
   return null;
@@ -358,33 +370,26 @@ function whyFromOuter(pieces: Garment[]): Candidate | null {
   const pinned = pinnedWhy(pieces);
   if (pinned) return pinned;
   const outer = outerOf(pieces);
-  const top = topOf(pieces);
   if (!outer) return null;
   if (/denim jacket/i.test(outer.name)) {
     return {
       key: "occasion_formality",
       score: 3,
-      line: top
-        ? `${outer.name} over a ${top.name.toLowerCase()} — school, not office.`
-        : `${outer.name} — school, not office.`,
+      line: "Indigo denim — school register, not office.",
     };
   }
   if (/rain shell/i.test(outer.name)) {
     return {
       key: "climate_layer",
       score: 3,
-      line: top
-        ? `${outer.name} over a ${top.name.toLowerCase()} is the wet-weather layer, even on a mild day.`
-        : `${outer.name} is the wet-weather layer, even on a mild day.`,
+      line: "Technical shell over a soft knit — crisp edge, easier body.",
     };
   }
   if (/harrington/i.test(outer.name)) {
     return {
       key: "garment_role",
       score: 3,
-      line: top
-        ? `${outer.name} over a ${top.name.toLowerCase()} is the campus jacket, not a blazer.`
-        : `${outer.name} is the campus jacket, not a blazer.`,
+      line: "Harrington — campus jacket line, not a blazer.",
     };
   }
   return null;
@@ -403,15 +408,35 @@ export function whyPrimaryKey(
   return whyCandidates(pieces, routine, climate)[0]?.key ?? "";
 }
 
+/** Prefer distinct visual insights across a set of three. */
+function assignInsights(
+  looks: Garment[][],
+  routine: RoutineId,
+  climate: Climate,
+): WhyInsight[] {
+  const used = new Set<WhyInsight>();
+  return looks.map((pieces, i) => {
+    const key = whyPrimaryKey(pieces, routine, climate);
+    let insight = key
+      ? insightFromKey(key, i)
+      : insightForIndex(i);
+    // Force uniqueness across the three cards
+    if (used.has(insight)) {
+      const alt = WHY_INSIGHTS.find((x) => !used.has(x));
+      if (alt) insight = alt;
+    }
+    used.add(insight);
+    return insight;
+  });
+}
+
 export function whyOne(
   pieces: Garment[],
   routine: RoutineId,
   climate: Climate,
-  used: Set<WhyKey> = new Set(),
+  insight: WhyInsight = "tonal",
 ): string {
-  const key = whyPrimaryKey(pieces, routine, climate);
-  if (key) used.add(key);
-  return richWhy(pieces, routine, climate);
+  return richWhy(pieces, routine, climate, insight);
 }
 
 export function whyForSet(
@@ -419,10 +444,26 @@ export function whyForSet(
   routine: RoutineId,
   climate: Climate,
 ): string[] {
-  const used = new Set<WhyKey>();
-  return looks.map((pieces) => whyOne(pieces, routine, climate, used));
+  const insights = assignInsights(looks, routine, climate);
+  const seen = new Set<string>();
+  return looks.map((pieces, i) => {
+    let insight = insights[i] ?? insightForIndex(i);
+    let line = richWhy(pieces, routine, climate, insight);
+    // If two cards somehow collide, rotate insight once
+    if (seen.has(line)) {
+      const next = WHY_INSIGHTS.find((x) => x !== insight) ?? insight;
+      line = richWhy(pieces, routine, climate, next);
+      insight = next;
+    }
+    seen.add(line);
+    return line;
+  });
 }
 
+/**
+ * Optional kit-swap pass (school jacket slots) + distinct visual why lines.
+ * Outfit picking still lives in board-set; this only nudges slot coverage.
+ */
 export function composeWhySet(
   looks: Garment[][],
   closet: Garment[],
@@ -431,20 +472,9 @@ export function composeWhySet(
 ): { kits: Garment[][]; lines: string[] } {
   const keys = slotKeys(looks, routine, climate);
   const kits: Garment[][] = [];
-  const lines: string[] = [];
-  const seen = new Set<string>();
   looks.forEach((raw, i) => {
     const key = keys[i] ?? SLOTS[i % 3]!;
-    const pieces = swapForSlot(raw, closet, key, routine, climate);
-    const line = lineForKey(pieces, key, routine, climate);
-    kits.push(pieces);
-    if (line && !seen.has(line) && !seen.has(key)) {
-      seen.add(line);
-      seen.add(key);
-      lines.push(line);
-    } else {
-      lines.push("");
-    }
+    kits.push(swapForSlot(raw, closet, key, routine, climate));
   });
-  return { kits, lines };
+  return { kits, lines: whyForSet(kits, routine, climate) };
 }

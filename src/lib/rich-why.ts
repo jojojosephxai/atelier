@@ -1,22 +1,48 @@
-import type { RoutineId } from "./routines";
-import type { Climate, Garment } from "./types";
+import type { RoutineId } from "./routines.ts";
+import type { Climate, Garment } from "./types.ts";
+
+/** Insight angle — three Today cards should use three different ones. */
+export type WhyInsight = "tonal" | "accent" | "texture" | "silhouette";
+
+export const WHY_INSIGHTS: WhyInsight[] = [
+  "tonal",
+  "accent",
+  "texture",
+  "silhouette",
+];
+
+const FILLER =
+  /\b(comfortable|casual|good for school|calm and composed|easy and composed|sleek and confident|clean and fresh|natural and calm|understated|warm and approachable|grounded and warm|stylish and versatile|perfect for any|looks great together|wet-weather|mild day|umbrella|AC[-\s]?shell|cold gym layer)\b/i;
 
 const FIT_RE =
   /\b(relaxed|oversized|fitted|straight(?:-leg)?|slim|cropped|tailored|loose|boxy|skinny|wide|knee[- ]length)\b/i;
 
-const FILLER =
-  /stylish and versatile|perfect for any|looks great together/gi;
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const c = hex.replace("#", "");
+  const r = parseInt(c.slice(0, 2), 16) / 255;
+  const g = parseInt(c.slice(2, 4), 16) / 255;
+  const b = parseInt(c.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return { h: h * 360, s, l };
+}
 
-const IMPRESSION: { test: RegExp; line: string }[] = [
-  { test: /\bnavy\b/i, line: "calm and composed" },
-  { test: /\b(indigo|blue)\b/i, line: "easy and composed" },
-  { test: /\bblack\b/i, line: "sleek and confident" },
-  { test: /\b(white|ivory)\b/i, line: "clean and fresh" },
-  { test: /\b(grey|gray|charcoal|heather)\b/i, line: "understated" },
-  { test: /\b(beige|cream|camel)\b/i, line: "warm and approachable" },
-  { test: /\b(brown|tan)\b/i, line: "grounded and warm" },
-  { test: /\b(olive|green)\b/i, line: "natural and calm" },
-];
+function isNeutralHex(hex: string): boolean {
+  const { h, s, l } = hexToHsl(hex);
+  if (s < 0.12) return true;
+  if (l < 0.12 || l > 0.9) return true;
+  if (h >= 200 && h <= 250 && s < 0.45 && l < 0.38) return true;
+  if ((h <= 40 || h >= 30) && h < 50 && s < 0.35 && l < 0.45) return true;
+  return false;
+}
 
 function isGymLayer(g: Garment): boolean {
   return /hoodie|quarter[-\s]?zip/i.test(`${g.name} ${g.notes}`);
@@ -31,70 +57,6 @@ function asRoutine(occasion: string): RoutineId {
   return "school";
 }
 
-export function article(phrase: string): string {
-  const w = phrase.replace(/^(a|an)\s+/i, "").trim();
-  if (!w) return phrase;
-  if (/\b(shorts|jeans|trousers|joggers|sneakers|trainers)\b/i.test(w)) return w;
-  return /^[aeiou]/i.test(w) ? `an ${w}` : `a ${w}`;
-}
-
-function uniqueColorNames(pieces: Garment[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const order = [
-    "outerwear",
-    "tops",
-    "dresses",
-    "bottoms",
-    "footwear",
-    "bags",
-    "accessories",
-  ] as const;
-  const sorted = [...pieces].sort(
-    (a, b) => order.indexOf(a.category) - order.indexOf(b.category),
-  );
-  for (const g of sorted) {
-    const c = (g.colorName || "").trim();
-    if (!c) continue;
-    const k = c.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(c);
-    if (out.length >= 3) break;
-  }
-  return out;
-}
-
-function impressionOf(colors: string[]): string {
-  for (const c of colors) {
-    for (const row of IMPRESSION) {
-      if (row.test.test(c)) return row.line;
-    }
-  }
-  return "";
-}
-
-function silhouetteOf(pieces: Garment[]): string {
-  for (const g of pieces) {
-    const m = `${g.name} ${g.notes}`.match(FIT_RE);
-    if (m?.[1]) {
-      return m[1]
-        .toLowerCase()
-        .replace("straight-leg", "straight")
-        .replace("knee length", "knee-length");
-    }
-  }
-  return "";
-}
-
-function listColors(colors: string[]): string {
-  if (colors.length === 0) return "";
-  if (colors.length === 1) return colors[0]!;
-  if (colors.length === 2)
-    return `${colors[0]} and ${colors[1]!.toLowerCase()}`;
-  return `${colors[0]}, ${colors[1]!.toLowerCase()}, and ${colors[2]!.toLowerCase()}`;
-}
-
 function outerOf(pieces: Garment[]) {
   return pieces.find((g) => g.category === "outerwear" && !isGymLayer(g));
 }
@@ -107,116 +69,71 @@ function bottomOf(pieces: Garment[]) {
 function layerOf(pieces: Garment[]) {
   return pieces.find(isGymLayer);
 }
-
-function merinoTop(g?: Garment) {
-  return Boolean(g && /merino/i.test(`${g.name} ${g.material}`));
+function shoesOf(pieces: Garment[]) {
+  return pieces.find((g) => g.category === "footwear");
 }
 
-/** Locked role beats — one clause, never the whole why. */
-function roleBeat(
-  pieces: Garment[],
-  routine: RoutineId,
-  climate: Climate,
-): string {
-  const outer = outerOf(pieces);
-  const top = topOf(pieces);
-  const layer = layerOf(pieces);
-  const bottom = bottomOf(pieces);
+/** Short role noun — never the full title pair. */
+function roleNoun(g: Garment): string {
+  const n = `${g.name} ${g.notes}`.toLowerCase();
+  if (/rain\s*shell|\bshell\b/.test(n)) return "shell";
+  if (/harrington|denim\s*jacket|field\s*jacket/.test(n)) return "jacket";
+  if (/hoodie/.test(n)) return "fleece";
+  if (/quarter[-\s]?zip/.test(n)) return "zip layer";
+  if (/polo/.test(n)) return "knit";
+  if (/merino|crew/.test(n)) return "crew";
+  if (/\btee\b|t-shirt/.test(n)) return "tee";
+  if (/oxford|shirt/.test(n)) return "shirt";
+  if (/jean/.test(n)) return "jeans";
+  if (/chino/.test(n)) return "chinos";
+  if (/jogger/.test(n)) return "joggers";
+  if (/trouser|pant/.test(n)) return "trousers";
+  if (/short/.test(n) && g.category === "bottoms") return "shorts";
+  if (/trainer|sneaker/.test(n)) return "sneakers";
+  if (/loafer|derby|boot/.test(n)) return "shoes";
+  if (g.category === "outerwear") return "jacket";
+  if (g.category === "tops") return "top";
+  if (g.category === "bottoms") return "bottom";
+  if (g.category === "footwear") return "shoes";
+  return g.name.split(/\s+/).slice(-1)[0]!.toLowerCase();
+}
 
-  if (routine === "gym") {
-    if (layer && top) {
-      return /hoodie/i.test(layer.name)
-        ? `${layer.name} over ${article(top.name.toLowerCase())} is the cold gym layer — fleece, not a coat`
-        : `${layer.name} over ${article(top.name.toLowerCase())} is the gym layer, not a jacket`;
-    }
-    if (top && bottom) {
-      return `${top.name} and ${bottom.name.toLowerCase()} stay athletic — floor kit, not a school jacket`;
-    }
-    return "The kit stays athletic — no school jacket";
+function colorOf(g: Garment): string {
+  return (g.colorName || "").trim();
+}
+
+function matOf(g: Garment): string {
+  return (g.material || "").trim();
+}
+
+function hueSpan(a: Garment, b: Garment): number {
+  const d = Math.abs(hexToHsl(a.hex).h - hexToHsl(b.hex).h);
+  return d > 180 ? 360 - d : d;
+}
+
+function sameFamily(a: Garment, b: Garment): boolean {
+  const ca = colorOf(a).toLowerCase();
+  const cb = colorOf(b).toLowerCase();
+  if (ca && cb && ca === cb) return true;
+  const la = hexToHsl(a.hex).l;
+  const lb = hexToHsl(b.hex).l;
+  if (ca && cb && ca !== cb && isNeutralHex(a.hex) && isNeutralHex(b.hex)) {
+    return Math.abs(la - lb) < 0.12;
   }
+  return hueSpan(a, b) < 28 && Math.abs(la - lb) < 0.2;
+}
 
-  if (outer && top) {
-    if (/denim jacket/i.test(outer.name) && merinoTop(top)) {
-      return "Indigo denim jacket over a black merino crew — school, not office";
-    }
-    if (/harrington/i.test(outer.name) && merinoTop(top)) {
-      return "Navy harrington over a black merino crew is the campus jacket, not a blazer";
-    }
-    if (/denim jacket/i.test(outer.name)) {
-      return `${outer.name} over ${article(top.name.toLowerCase())} — school, not office`;
-    }
-    if (/harrington/i.test(outer.name)) {
-      return `${outer.name} over ${article(top.name.toLowerCase())} is the campus jacket, not a blazer`;
-    }
-    if (/rain shell|\brain\b/i.test(outer.name) || climate === "rain") {
-      if (/rain shell|\brain\b/i.test(outer.name)) {
-        return `${outer.name} over ${article(top.name.toLowerCase())} is the wet-weather layer, even on a mild day`;
-      }
+function fitOf(pieces: Garment[]): string {
+  for (const g of pieces) {
+    const m = `${g.name} ${g.notes}`.match(FIT_RE);
+    if (m?.[1]) {
+      return m[1]
+        .toLowerCase()
+        .replace("straight-leg", "straight")
+        .replace("knee length", "knee-length");
     }
   }
   return "";
-}
-
-function kitPair(pieces: Garment[]): string {
-  const outer = outerOf(pieces) ?? layerOf(pieces);
-  const top = topOf(pieces);
-  if (outer && top) {
-    return `${article(outer.name.toLowerCase())} and ${article(top.name.toLowerCase())}`;
-  }
-  const bottom = bottomOf(pieces);
-  if (top && bottom) {
-    return `${article(top.name.toLowerCase())} and ${article(bottom.name.toLowerCase())}`;
-  }
-  if (top) return article(top.name.toLowerCase());
-  if (outer) return article(outer.name.toLowerCase());
-  return "";
-}
-
-function colorVibe(colors: string[], impression: string, pieces: Garment[]): string {
-  if (!colors.length) return "";
-  const listed = listColors(colors);
-  const verb = colors.length === 1 ? "reads" : "read";
-  const feel = impression ? ` ${verb} ${impression}` : " hold the palette";
-  const kit = kitPair(pieces);
-  if (kit) return `${listed}${feel} on ${kit}.`;
-  return `${listed}${feel}.`;
-}
-
-function occLabel(routine: RoutineId): string {
-  if (routine === "school") return "school";
-  if (routine === "gym") return "the gym";
-  if (routine === "out") return "going out";
-  return "the weekend";
-}
-
-function fitOccasion(
-  sil: string,
-  routine: RoutineId,
-  pieces: Garment[],
-): string {
-  const occ = occLabel(routine);
-  if (sil) {
-    return `${article(sil).replace(/^a /, "A ").replace(/^an /, "An ")} cut keeps the outline for ${occ}.`;
-  }
-  const kit = kitPair(pieces);
-  if (kit) return `The pieces stay right for ${occ}, without extra noise.`;
-  return `It holds for ${occ}.`;
-}
-
-function wordCount(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function clampWords(text: string, max = 50): string {
-  let t = text.replace(FILLER, "").replace(/\s+/g, " ").trim();
-  const sentences = t.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [t];
-  t = sentences.slice(0, 2).join(" ").replace(/\s+/g, " ").trim();
-  const words = t.split(/\s+/).filter(Boolean);
-  if (words.length > max) {
-    t = `${words.slice(0, max).join(" ").replace(/[.,;:—-]+$/, "")}.`;
-  }
-  if (t && !/[.!?]$/.test(t)) t += ".";
-  return t;
 }
 
 function endSentence(clause: string): string {
@@ -226,40 +143,310 @@ function endSentence(clause: string): string {
   return `${t}.`;
 }
 
-function joinWhy(parts: string[]): string {
-  return parts
-    .map((p) => endSentence(p))
-    .filter(Boolean)
-    .join(" ");
+function scrub(line: string): string {
+  const t = line.replace(/\s+/g, " ").trim();
+  if (!t || FILLER.test(t)) return "";
+  if (/is the wet-weather|even on a mild/i.test(t)) return "";
+  if (
+    /navy rain shell|navy polo knit|navy harrington|black merino crew|indigo denim jacket/i.test(
+      t,
+    )
+  ) {
+    return "";
+  }
+  if (/\b(harrington|hoodie|rain shell) over\b/i.test(t)) return "";
+  return t;
 }
 
+function depthRead(color: string): string {
+  const c = color.toLowerCase();
+  if (/navy/.test(c)) return "contained depth because contrast stays low";
+  if (/black/.test(c)) return "dense weight because the values stay closed";
+  if (/charcoal|grey|gray|heather/.test(c)) {
+    return "quiet mid-tone weight because nothing spikes";
+  }
+  if (/indigo|blue/.test(c)) {
+    return "cool depth because the field stays continuous";
+  }
+  if (/olive|forest|green/.test(c)) {
+    return "earthy hold because the chroma stays mute";
+  }
+  if (/white|ivory/.test(c)) return "open light against a darker field";
+  if (/beige|cream|camel|sand|stone|khaki/.test(c)) {
+    return "warm ground because the chroma stays low";
+  }
+  return "a tighter field because nothing spikes";
+}
+
+function paletteSentence(
+  pieces: Garment[],
+  insight: WhyInsight,
+  climate: Climate,
+): string {
+  const outer = outerOf(pieces) ?? layerOf(pieces);
+  const top = topOf(pieces);
+  const bottom = bottomOf(pieces);
+  const shoes = shoesOf(pieces);
+  const layer = layerOf(pieces);
+
+  if (insight === "accent" && shoes && top && colorOf(shoes)) {
+    const shoeC = colorOf(shoes);
+    if (outer && top && sameFamily(outer, top) && bottom) {
+      const c = colorOf(outer) || colorOf(top);
+      return scrub(
+        `Tonal ${c.toLowerCase()} on the ${roleNoun(outer)} and ${roleNoun(top)} keeps ${depthRead(c)}, with ${colorOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} and ${shoeC.toLowerCase()} at the ${roleNoun(shoes)} as supporting breaks`,
+      );
+    }
+    if (outer && top && sameFamily(outer, top)) {
+      const c = colorOf(outer) || colorOf(top);
+      return scrub(
+        `Tonal ${c.toLowerCase()} through the ${roleNoun(outer)} and ${roleNoun(top)} — ${depthRead(c)}; ${shoeC.toLowerCase()} at the ${roleNoun(shoes)} is the accent break`,
+      );
+    }
+  }
+
+  if (outer && top && sameFamily(outer, top)) {
+    const c = colorOf(outer) || colorOf(top);
+    if (bottom && !sameFamily(top, bottom)) {
+      return scrub(
+        `Tonal ${c.toLowerCase()} on the ${roleNoun(outer)} and ${roleNoun(top)} keeps ${depthRead(c)}; ${colorOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} is the mute shift below`,
+      );
+    }
+    return scrub(
+      `Tonal ${c.toLowerCase()} on the ${roleNoun(outer)} and ${roleNoun(top)} keeps ${depthRead(c)} in one register${
+        bottom
+          ? `, with ${colorOf(bottom).toLowerCase()} in the ${roleNoun(bottom)} as a darker continuation`
+          : ""
+      }`,
+    );
+  }
+
+  if (outer && top) {
+    const oc = colorOf(outer);
+    const tc = colorOf(top);
+    if (oc && tc && oc.toLowerCase() !== tc.toLowerCase()) {
+      return scrub(
+        `${oc} against ${tc.toLowerCase()} is value contrast rather than a loud break`,
+      );
+    }
+  }
+
+  if (layer && top) {
+    const lc = colorOf(layer);
+    const tc = colorOf(top);
+    if (lc && tc && sameFamily(layer, top)) {
+      return scrub(
+        `Tonal ${lc.toLowerCase()} through the upper stack — monochrome weight rather than a contrast break`,
+      );
+    }
+    if (lc && tc) {
+      return scrub(
+        `${lc} against ${tc.toLowerCase()} is a mute value shift, not a loud accent`,
+      );
+    }
+  }
+
+  if (top && bottom) {
+    const tc = colorOf(top);
+    const bc = colorOf(bottom);
+    if (tc && bc && sameFamily(top, bottom)) {
+      return scrub(
+        `Tonal ${tc.toLowerCase()} down the line stays in one register — ${depthRead(tc)}`,
+      );
+    }
+    if (tc && bc) {
+      if (isNeutralHex(top.hex) && isNeutralHex(bottom.hex)) {
+        return scrub(
+          `${tc} and ${bc.toLowerCase()} stay in one mute register, ${depthRead(tc)}`,
+        );
+      }
+      return scrub(
+        `${tc} lands on ${bc.toLowerCase()} below — ${depthRead(tc)} meeting steadier ground`,
+      );
+    }
+  }
+
+  if (climate === "rain" && outer) {
+    const c = colorOf(outer) || (top ? colorOf(top) : "");
+    return scrub(
+      `Tonal ${(c || "navy").toLowerCase()} stacked on ${(c || "navy").toLowerCase()} keeps ${depthRead(c || "navy")}`,
+    );
+  }
+
+  const colors = pieces
+    .map(colorOf)
+    .filter(Boolean)
+    .filter(
+      (c, i, a) => a.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i,
+    )
+    .slice(0, 2);
+  if (colors.length === 2) {
+    return scrub(
+      `${colors[0]} and ${colors[1]!.toLowerCase()} share one mute register across the kit`,
+    );
+  }
+  if (colors.length === 1) {
+    return scrub(
+      `Tonal ${colors[0]!.toLowerCase()} holds the field — ${depthRead(colors[0]!)}`,
+    );
+  }
+  return scrub("The palette stays in one mute register");
+}
+
+function structureSentence(
+  pieces: Garment[],
+  _insight: WhyInsight,
+  routine: RoutineId,
+  climate: Climate,
+): string {
+  const outer = outerOf(pieces);
+  const top = topOf(pieces);
+  const bottom = bottomOf(pieces);
+  const layer = layerOf(pieces);
+  const sil = fitOf(pieces);
+
+  if (outer && top) {
+    const tech = /nylon|shell|technical/i.test(`${matOf(outer)} ${outer.name}`);
+    const soft = /knit|merino|jersey|cotton|fleece|linen/i.test(
+      `${matOf(top)} ${top.name}`,
+    );
+    if (tech && soft) {
+      if (climate === "rain") {
+        return scrub(
+          `Nylon against cotton knit is the texture break, so the shell face stays crisp in rain rather than going dull`,
+        );
+      }
+      return scrub(
+        `Nylon against cotton knit is the texture break, so the outline stays sharp while the body stays soft`,
+      );
+    }
+    if (matOf(outer) && matOf(top) && matOf(outer).toLowerCase() !== matOf(top).toLowerCase()) {
+      return scrub(
+        `${matOf(outer)} against ${matOf(top).toLowerCase()} is the texture break, so a sharper outer frames a softer body`,
+      );
+    }
+    if (sil) {
+      return scrub(
+        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} cut keeps volume easy, so the inner layer hangs cleaner under a sharper frame rather than fighting it`,
+      );
+    }
+    return scrub(
+      `A sharper outer line keeps structure outside, so the body hangs softer underneath rather than flattening the stack`,
+    );
+  }
+
+  if (layer) {
+    const oversized =
+      sil === "oversized" || /oversized/i.test(`${layer.name} ${layer.notes}`);
+    if (oversized && bottom) {
+      return scrub(
+        `Oversized fleece adds volume up top, so the ${roleNoun(bottom)} keep a cleaner athletic hang underneath`,
+      );
+    }
+    if (bottom) {
+      return scrub(
+        `Fleece against a closer cotton layer is the soft break, so the ${roleNoun(bottom)} finish the athletic outline`,
+      );
+    }
+    return scrub(
+      `Oversized fleece adds volume, so the athletic outline hangs ready to move rather than going tight`,
+    );
+  }
+
+  if (top && bottom) {
+    const tm = matOf(top);
+    const bm = matOf(bottom);
+    if (tm && bm && tm.toLowerCase() !== bm.toLowerCase()) {
+      return scrub(
+        `${tm} against ${bm.toLowerCase()} is the texture break, so the ${roleNoun(top)} and ${roleNoun(bottom)} hang as related rather than matched`,
+      );
+    }
+    if (sil) {
+      return scrub(
+        `${sil.charAt(0).toUpperCase()}${sil.slice(1)} cut links both halves, so the outline reads as one hang rather than two pieces`,
+      );
+    }
+    if (routine === "gym") {
+      return scrub(
+        `Athletic cut through the line keeps volume ready, so the kit hangs to move rather than to pose`,
+      );
+    }
+    return scrub(
+      `Proportions link both halves, so the outline hangs as one rather than two separate pieces`,
+    );
+  }
+
+  if (outer) {
+    return scrub(
+      `The ${roleNoun(outer)} sets the outer outline, so everything under it stays secondary rather than competing`,
+    );
+  }
+  return scrub(
+    "Structure holds as one outline, so the hang reads stacked rather than flat",
+  );
+}
+
+function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function clampWords(text: string, max = 50): string {
+  let t = text.replace(/\s+/g, " ").trim();
+  const found = t.match(/[^.!?]+[.!?]+/g) ?? [t];
+  t = found.slice(0, 2).join(" ").replace(/\s+/g, " ").trim();
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length > max) {
+    t = `${words.slice(0, max).join(" ").replace(/[.,;:—-]+$/, "")}.`;
+  }
+  if (t && !/[.!?]$/.test(t)) t += ".";
+  return t;
+}
+
+/**
+ * Exactly two visual sentences: palette relationship, then structure/texture.
+ * `insight` shifts which relationship leads so a set of three looks stays distinct.
+ * Climate may add a brief visual rain note only when the brief is rain/snow.
+ */
 export function richWhy(
   pieces: Garment[],
   occasion: RoutineId | string,
   climate: Climate,
+  insight: WhyInsight = "tonal",
 ): string {
   if (!pieces.length) return "";
   const routine = asRoutine(String(occasion));
-  const colors = uniqueColorNames(pieces);
-  const impression = impressionOf(colors);
-  const sil = silhouetteOf(pieces);
-  const beat = roleBeat(pieces, routine, climate);
-  const s1 = colorVibe(colors, impression, pieces);
-  const s2 = beat || fitOccasion(sil, routine, pieces);
 
-  const parts = [s1, s2].filter(Boolean);
-  if (parts.length < 2) {
-    const extra = fitOccasion(sil, routine, pieces);
-    if (extra && !parts.includes(extra)) parts.push(extra);
+  const shoes = shoesOf(pieces);
+  let focus = insight;
+  if (
+    insight === "tonal" &&
+    shoes &&
+    /white|ivory/i.test(colorOf(shoes)) &&
+    bottomOf(pieces)
+  ) {
+    focus = "accent";
   }
-  let text = joinWhy(parts);
 
-  if (wordCount(text) < 25 && sil && !new RegExp(`\\b${sil}\\b`, "i").test(text)) {
-    text = joinWhy([text, `${sil} through the line`]);
-  }
-  if (wordCount(text) < 25) {
-    text = joinWhy([text, "The palette stays tight, nothing extra crowding the kit"]);
+  const s1 =
+    scrub(paletteSentence(pieces, focus, climate) || "") ||
+    "Tonal neutrals stay in one mute register across the kit";
+  const s2 =
+    scrub(structureSentence(pieces, focus, routine, climate) || "") ||
+    "Texture and outline hold together, so the hang reads as one rather than apart";
+
+  let text = [endSentence(s1), endSentence(s2)].join(" ");
+
+  if (wordCount(text) < 18) {
+    text = `${text} ${endSentence("so the hang reads stacked rather than flat")}`.trim();
+    text = clampWords(text, 50);
+    // Re-trim to two sentences after pad
+    const bits = text.match(/[^.!?]+[.!?]+/g) ?? [text];
+    text = bits.slice(0, 2).join(" ");
   }
 
   return clampWords(text, 50);
+}
+
+export function insightForIndex(i: number): WhyInsight {
+  return WHY_INSIGHTS[i % WHY_INSIGHTS.length]!;
 }

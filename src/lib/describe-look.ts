@@ -1,5 +1,9 @@
-import type { RoutineId } from "./routines";
-import type { Climate, Garment } from "./types";
+import {
+  insightForIndex,
+  richWhy,
+} from "./rich-why.ts";
+import type { RoutineId } from "./routines.ts";
+import type { Climate, Garment } from "./types.ts";
 
 export type LookContext = {
   routine: RoutineId;
@@ -25,22 +29,6 @@ const OCCASION: Record<RoutineId, string> = {
   gym: "the gym",
   out: "going out",
 };
-
-const IMPRESSION: { test: RegExp; line: string }[] = [
-  { test: /\bnavy\b/i, line: "calm, composed" },
-  { test: /\b(indigo|blue)\b/i, line: "easy and composed" },
-  { test: /\bblack\b/i, line: "sleek, confident" },
-  { test: /\b(white|ivory)\b/i, line: "clean, fresh" },
-  { test: /\b(grey|gray|charcoal|heather)\b/i, line: "understated" },
-  { test: /\b(stone|khaki)\b/i, line: "grounded, understated" },
-  { test: /\b(beige|cream|camel|sand)\b/i, line: "warm, approachable" },
-  { test: /\b(brown|oak|espresso|tobacco|tan)\b/i, line: "grounded and warm" },
-  { test: /\b(olive|green|forest)\b/i, line: "natural, calm" },
-  { test: /\b(red|burgundy|wine)\b/i, line: "bold" },
-  { test: /\byellow\b/i, line: "upbeat" },
-  { test: /\b(orange|rust)\b/i, line: "warm, energetic" },
-  { test: /\b(purple|plum)\b/i, line: "distinctive" },
-];
 
 const SLOT = [
   "outerwear",
@@ -82,23 +70,6 @@ function silhouetteOf(pieces: Garment[]): string {
   return "";
 }
 
-function impressionOf(colors: string[]): string {
-  for (const c of colors) {
-    for (const row of IMPRESSION) {
-      if (row.test.test(c)) return row.line;
-    }
-  }
-  return "";
-}
-
-function climateNote(climate: Climate, routine: RoutineId): string {
-  if (routine === "gym") return "";
-  if (climate === "rain") return "even in wet weather";
-  if (climate === "hot" || climate === "warm") return "on milder days";
-  if (climate === "cold" || climate === "snow") return "when it turns cold";
-  return "";
-}
-
 function shortName(g: Garment): string {
   return g.name.replace(/^(the)\s+/i, "").toLowerCase();
 }
@@ -117,21 +88,6 @@ function keyPiecesOf(pieces: Garment[]): string[] {
   return names;
 }
 
-function listAnd(items: string[]): string {
-  if (items.length === 0) return "";
-  if (items.length === 1) return items[0]!;
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items[0]}, ${items[1]}, and ${items[2]}`;
-}
-
-function colorPhrase(colors: string[]): string {
-  if (colors.length === 0) return "";
-  if (colors.length === 1) return colors[0]!;
-  if (colors.length === 2)
-    return `${colors[0]} and ${colors[1]!.toLowerCase()}`;
-  return `${colors[0]}, ${colors[1]!.toLowerCase()}, and ${colors[2]!.toLowerCase()}`;
-}
-
 export function lookFacts(pieces: Garment[], ctx: LookContext): LookFacts {
   const colors = uniqueColors(pieces);
   return {
@@ -140,8 +96,9 @@ export function lookFacts(pieces: Garment[], ctx: LookContext): LookFacts {
     keyPieces: keyPiecesOf(pieces),
     silhouette: silhouetteOf(pieces),
     occasion: OCCASION[ctx.routine] ?? "everyday wear",
-    climateNote: climateNote(ctx.climate, ctx.routine),
-    impression: impressionOf(colors),
+    // Weather belongs in climateNotes, not why copy
+    climateNote: "",
+    impression: "",
   };
 }
 
@@ -149,7 +106,7 @@ function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function clampLookCopy(text: string, max = 45): string {
+export function clampLookCopy(text: string, max = 55): string {
   let t = text
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/^#{1,6}\s+/gm, "")
@@ -171,73 +128,36 @@ export function clampLookCopy(text: string, max = 45): string {
   return t;
 }
 
-function article(phrase: string): string {
-  const w = phrase.replace(/^(a|an)\s+/i, "").trim();
-  if (!w) return phrase;
-  if (/\b(shorts|jeans|trousers|joggers|sneakers|trainers|chinos)\b/i.test(w)) {
-    return w;
+/** Shared path: same visual why engine as Today. */
+export function copyFromFacts(
+  facts: LookFacts,
+  variety = 0,
+  pieces: Garment[] = [],
+  ctx?: LookContext,
+): string {
+  if (pieces.length && ctx) {
+    return richWhy(
+      pieces,
+      ctx.routine,
+      ctx.climate,
+      insightForIndex(variety),
+    );
   }
-  return /^[aeiou]/i.test(w) ? `an ${w}` : `a ${w}`;
-}
-
-function cap(phrase: string): string {
-  if (!phrase) return phrase;
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
-}
-
-function kitPhrase(items: string[]): string {
-  if (items.length === 0) return "";
-  const marked = items.map((p, i) => (i === 0 ? article(p) : p));
-  return listAnd(marked);
-}
-
-const FILLER =
-  /stylish and versatile|perfect for any|effortlessly fashionable|looks great together/i;
-
-export function copyFromFacts(facts: LookFacts, variety = 0): string {
-  const colors = colorPhrase(
-    [facts.dominantColor, ...facts.secondaryColors].filter(Boolean),
-  );
-  const kit = kitPhrase(facts.keyPieces);
-  const piecesPlain = listAnd(facts.keyPieces);
+  // Minimal fallback when only facts are available (tests / stubs)
+  const colors = [facts.dominantColor, ...facts.secondaryColors]
+    .filter(Boolean)
+    .slice(0, 2);
+  const colorBit =
+    colors.length === 2
+      ? `${colors[0]} and ${colors[1]!.toLowerCase()} share the field`
+      : colors[0]
+        ? `${colors[0]} holds the field`
+        : "The palette stays tight";
   const sil = facts.silhouette;
-  const occ = facts.occasion;
-  const feel = facts.impression;
-  const weather = facts.climateNote;
-  const occTail = weather ? `${occ} ${weather}` : occ;
-  const colorCount = [facts.dominantColor, ...facts.secondaryColors].filter(
-    Boolean,
-  ).length;
-  const colorVerb = colorCount === 1 ? "keeps" : "keep";
-
-  const drafts: string[] = [];
-  if (colors && kit) {
-    drafts.push(
-      `${colors} give this a ${feel || "coherent"} palette, while ${kit} ${sil ? `keep the silhouette ${sil}` : "carry the look"} without looking sloppy. A strong option for ${occTail}.`,
-    );
-    drafts.push(
-      `${sil ? `${cap(article(sil))} mix of ` : ""}${piecesPlain}${colors ? ` in ${colors.toLowerCase()}` : ""}${feel ? ` reads ${feel}` : ""}. Right for ${occTail}.`,
-    );
-    drafts.push(
-      `${colors} sit on ${kit}${sil ? `, ${sil} through the line` : ""}. ${feel ? `The impression is ${feel} — ` : ""}a solid choice for ${occTail}.`,
-    );
-    drafts.push(
-      `Built around ${kit}, ${colors.toLowerCase()} ${colorVerb} the look ${feel || "coherent"}${sil ? ` and ${sil}` : ""}. Fits ${occTail}.`,
-    );
-  } else if (kit) {
-    const silBit = sil ? `, ${sil} through the line` : "";
-    drafts.push(
-      `This look is built around ${kit}${silBit}. A strong option for ${occTail}.`,
-    );
-  } else {
-    drafts.push(`A simple kit for ${occTail}.`);
-  }
-
-  const pick = (drafts[variety % drafts.length] ?? drafts[0]!).replace(
-    FILLER,
-    "",
-  );
-  return clampLookCopy(pick);
+  const struct = sil
+    ? `${sil.charAt(0).toUpperCase()}${sil.slice(1)} proportions keep one outline`
+    : "Structure holds as one outline across the pieces";
+  return clampLookCopy(`${colorBit}. ${struct}.`);
 }
 
 export function describeLook(
@@ -246,7 +166,7 @@ export function describeLook(
   variety = 0,
 ): string {
   if (!pieces.length) return "";
-  return copyFromFacts(lookFacts(pieces, ctx), variety);
+  return richWhy(pieces, ctx.routine, ctx.climate, insightForIndex(variety));
 }
 
 export function lookCopyWordCount(text: string): number {

@@ -296,6 +296,7 @@ function rationaleFor(
     pieces,
     extras,
     `${brief.occasion} ${brief.description}`,
+    brief.climate,
   );
   if (why) parts.push(why);
   if (incomplete.length) {

@@ -1,7 +1,7 @@
 import type { Climate, Garment, GarmentCategory } from "./types";
 import { FORMALITIES } from "./types";
 import type { RoutineId } from "./routines";
-import { richWhy } from "./rich-why";
+import { richWhy } from "./rich-why.ts";
 
 const ORDER: GarmentCategory[] = [
   "outerwear",
