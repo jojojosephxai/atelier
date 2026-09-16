@@ -1,13 +1,12 @@
 /**
  * On-device cutout pipeline.
  *
- * Stages (always, in order):
- *   1. shrinkForCut   — bound input size
- *   2. removeBackground — @imgly/background-removal
- *   3. refineMatte    — harden alpha, kill halo, defringe RGB
- *   4. keepMainSubject — drop floating debris (skipped when corners still opaque)
- *   5. stripHanger    — garment mode only
- *   6. cropIsolate    — tight crop + encode PNG
+ * Stages:
+ *   Quick sweep (always, no daily budget):
+ *     shrink → floodFillFloor → refineMatte → keepMainSubject → stripHanger
+ *   Fuller isolation (user tap only; counts toward daily budget):
+ *     shrink → removeBackground → refineMatte → keepMainSubject →
+ *     stripHanger (garment) → cropIsolate
  *
  * Modes:
  *   garment — clothes on hangers / floors
@@ -91,6 +90,107 @@ export function classifyCutError(err: unknown): CutFailKind {
 
 let cutterWarm = false;
 let preloadP: Promise<void> | null = null;
+
+/** Corner flood-fill: erase pixels that match the floor. Cheap, no AI. */
+export function floodFillFloor(img: ImageData, hard = 22, soft = 40): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const samples = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
+  let br = 0;
+  let bg = 0;
+  let bb = 0;
+  for (const i of samples) {
+    br += px[i]!;
+    bg += px[i + 1]!;
+    bb += px[i + 2]!;
+  }
+  br /= 4;
+  bg /= 4;
+  bb /= 4;
+  const hard2 = hard * hard;
+  const soft2 = soft * soft;
+  const seen = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const tryPush = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const idx = y * w + x;
+    if (seen[idx]) return;
+    if (dist2(px, idx * 4, br, bg, bb) > soft2) return;
+    seen[idx] = 1;
+    stack.push(idx);
+  };
+  for (let x = 0; x < w; x++) {
+    tryPush(x, 0);
+    tryPush(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    tryPush(0, y);
+    tryPush(w - 1, y);
+  }
+  while (stack.length) {
+    const idx = stack.pop()!;
+    const i = idx * 4;
+    const d = dist2(px, i, br, bg, bb);
+    if (d < hard2) px[i + 3] = 0;
+    else {
+      const a = (Math.sqrt(d) - hard) / (soft - hard);
+      px[i + 3] = Math.max(0, Math.min(255, Math.round(255 * a)));
+    }
+    const x = idx % w;
+    const y = (idx / w) | 0;
+    tryPush(x - 1, y);
+    tryPush(x + 1, y);
+    tryPush(x, y - 1);
+    tryPush(x, y + 1);
+  }
+}
+
+export function opaqueShare(img: ImageData): number {
+  const px = img.data;
+  const n = img.width * img.height;
+  if (!n) return 0;
+  let hit = 0;
+  for (let i = 3; i < px.length; i += 4) {
+    if (px[i]! >= 18) hit++;
+  }
+  return hit / n;
+}
+
+/** Fast floor sweep. Does not use the daily AI budget. */
+export async function quickCut(file: File, mode: CutMode): Promise<Blob> {
+  const profile = PROFILES[mode];
+  const source = await shrinkForCut(file, Math.min(960, profile.maxEdge));
+  const bmp = await createImageBitmap(source);
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) {
+    bmp.close();
+    throw new Error("Could not read photo");
+  }
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  floodFillFloor(data);
+  refineMatte(data, profile);
+  if (!cornersStillFloor(data)) keepMainSubject(data);
+  if (profile.stripHanger) {
+    stripHanger(data);
+    refineMatte(data, {
+      ...profile,
+      edgeTrim: 0,
+      haloTrim: false,
+      alphaKill: Math.max(40, profile.alphaKill - 16),
+    });
+  }
+  if (cornersStillFloor(data) || opaqueShare(data) < 0.04) {
+    throw new Error("Quick sweep left the floor");
+  }
+  ctx.putImageData(data, 0, 0);
+  return cropIsolate(canvas, data);
+}
 
 export function cutBudget(): { used: number; cap: number; ok: boolean } {
   const day = new Date().toISOString().slice(0, 10);
@@ -894,58 +994,7 @@ export function knockBackground(img: HTMLImageElement, maxEdge = 1400): string {
   if (!ctx) return img.src;
   ctx.drawImage(img, 0, 0, w, h);
   const data = ctx.getImageData(0, 0, w, h);
-  const px = data.data;
-  const samples = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
-  let br = 0;
-  let bg = 0;
-  let bb = 0;
-  for (const i of samples) {
-    br += px[i];
-    bg += px[i + 1];
-    bb += px[i + 2];
-  }
-  br /= 4;
-  bg /= 4;
-  bb /= 4;
-  const HARD = 22;
-  const SOFT = 40;
-  const hard2 = HARD * HARD;
-  const soft2 = SOFT * SOFT;
-  const seen = new Uint8Array(w * h);
-  const stack: number[] = [];
-  const tryPush = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= w || y >= h) return;
-    const idx = y * w + x;
-    if (seen[idx]) return;
-    if (dist2(px, idx * 4, br, bg, bb) > soft2) return;
-    seen[idx] = 1;
-    stack.push(idx);
-  };
-  for (let x = 0; x < w; x++) {
-    tryPush(x, 0);
-    tryPush(x, h - 1);
-  }
-  for (let y = 0; y < h; y++) {
-    tryPush(0, y);
-    tryPush(w - 1, y);
-  }
-  while (stack.length) {
-    const idx = stack.pop()!;
-    const i = idx * 4;
-    const d = dist2(px, i, br, bg, bb);
-    if (d < hard2) px[i + 3] = 0;
-    else {
-      const a = (Math.sqrt(d) - HARD) / (SOFT - HARD);
-      px[i + 3] = Math.max(0, Math.min(255, Math.round(255 * a)));
-    }
-    const x = idx % w;
-    const y = (idx / w) | 0;
-    tryPush(x - 1, y);
-    tryPush(x + 1, y);
-    tryPush(x, y - 1);
-    tryPush(x, y + 1);
-  }
-  // Harden the flood-fill matte the same way product cuts do.
+  floodFillFloor(data);
   refineMatte(data, {
     maxEdge,
     alphaKill: 64,

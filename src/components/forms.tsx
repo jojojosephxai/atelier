@@ -10,6 +10,7 @@ import {
   cutFailCopy,
   cutGarment,
   cutProduct,
+  quickCut,
   tileBlobAfterCut,
   type CutMode,
 } from "@/lib/cutout";
@@ -97,19 +98,25 @@ type CutJob = {
   ac: AbortController;
   stagingId?: string;
   putOk: boolean;
-  floorUrl?: string;
 };
 
-/** Save the original photo first so the tile is never blank, then isolate. */
+const QUICK_OK =
+  "Quick sweep done. If the floor is still showing, tap Fuller isolation — it takes longer.";
+const QUICK_MISS =
+  "Quick sweep couldn't knock the floor. Your original photo is saved. Tap Fuller isolation for a longer pass.";
+
+/** Save the original first, cheap floor sweep, fuller isolation only if asked. */
 function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
   const [imageBlobId, setImageBlobId] = useState(initialBlobId);
   const [preview, setPreview] = useState(initialSrc);
   const [cutting, setCutting] = useState(false);
   const [savingOriginal, setSavingOriginal] = useState(false);
   const [cutStatus, setCutStatus] = useState("");
+  const [showFuller, setShowFuller] = useState(false);
   const photo = preview || initialSrc;
   const cutJob = useRef<CutJob | null>(null);
   const previewUrlRef = useRef<string | undefined>(undefined);
+  const lastPick = useRef<{ file: File; mode: CutMode } | null>(null);
 
   useEffect(() => {
     if (preview || !initialBlobId) return;
@@ -157,13 +164,12 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
     showPreview(URL.createObjectURL(file));
     setSavingOriginal(true);
     setCutting(true);
+    setShowFuller(false);
+    lastPick.current = { file, mode };
     setCutStatus("Saving your photo…");
 
     const stillThisJob = () =>
       !ac.signal.aborted && cutJob.current === job;
-    const report = (msg: string) => {
-      if (stillThisJob()) setCutStatus(msg);
-    };
 
     try {
       const originalId = uid("p");
@@ -177,38 +183,36 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
       setImageBlobId(originalId);
       setSavingOriginal(false);
 
-      const budget = cutBudget();
-      if (!budget.ok) {
-        setCutStatus(cutFailCopy("limit"));
-        toast(cutFailCopy("limit"));
-        return;
+      if (stillThisJob()) setCutStatus("Quick sweep of the floor…");
+      try {
+        const isolated = await quickCut(file, mode);
+        if (!stillThisJob()) {
+          throw new DOMException("Aborted", "AbortError");
+        }
+        const chosen = tileBlobAfterCut(file, isolated);
+        if (chosen === isolated) {
+          const cutId = uid("p");
+          await putPhoto(cutId, isolated);
+          if (!stillThisJob()) {
+            await deletePhoto(cutId);
+            throw new DOMException("Aborted", "AbortError");
+          }
+          job.stagingId = cutId;
+          setImageBlobId(cutId);
+          showPreview(URL.createObjectURL(isolated));
+          setCutStatus(QUICK_OK);
+        } else {
+          setCutStatus(QUICK_MISS);
+        }
+      } catch (sweepErr) {
+        if (!stillThisJob()) {
+          throw new DOMException("Aborted", "AbortError");
+        }
+        const kind = classifyCutError(sweepErr);
+        if (kind === "timeout") throw sweepErr;
+        setCutStatus(QUICK_MISS);
       }
-
-      report("Isolating from the floor…");
-      const isolated =
-        mode === "product"
-          ? await cutProduct(file, report, ac.signal)
-          : await cutGarment(file, report, ac.signal);
-      if (!stillThisJob()) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      const chosen = tileBlobAfterCut(file, isolated);
-      if (chosen !== isolated) {
-        setCutStatus(cutFailCopy("fail"));
-        toast(cutFailCopy("fail"));
-        return;
-      }
-
-      const cutId = uid("p");
-      await putPhoto(cutId, isolated);
-      if (!stillThisJob()) {
-        await deletePhoto(cutId);
-        throw new DOMException("Aborted", "AbortError");
-      }
-      job.stagingId = cutId;
-      setImageBlobId(cutId);
-      showPreview(URL.createObjectURL(isolated));
-      setCutStatus("Isolated cut saved");
+      if (stillThisJob()) setShowFuller(true);
     } catch (err) {
       if (cutJob.current !== job) return;
       const kind = classifyCutError(err);
@@ -229,11 +233,75 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
       toast(
         job.putOk ? cutFailCopy(kind) : "Couldn't save that photo. Try again.",
       );
+      if (job.putOk) setShowFuller(true);
     } finally {
       if (cutJob.current === job) {
         cutJob.current = null;
         setCutting(false);
         setSavingOriginal(false);
+      }
+    }
+  }
+
+  async function runFuller() {
+    const pick = lastPick.current;
+    if (!pick || cutting || savingOriginal) return;
+    abortCut();
+    const ac = new AbortController();
+    const job: CutJob = { ac, putOk: true };
+    cutJob.current = job;
+    setCutting(true);
+    setCutStatus("Fuller isolation — this takes longer…");
+
+    const stillThisJob = () =>
+      !ac.signal.aborted && cutJob.current === job;
+    const report = (msg: string) => {
+      if (stillThisJob()) setCutStatus(msg);
+    };
+
+    try {
+      const budget = cutBudget();
+      if (!budget.ok) {
+        setCutStatus(cutFailCopy("limit"));
+        toast(cutFailCopy("limit"));
+        return;
+      }
+
+      const isolated =
+        pick.mode === "product"
+          ? await cutProduct(pick.file, report, ac.signal)
+          : await cutGarment(pick.file, report, ac.signal);
+      if (!stillThisJob()) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      const chosen = tileBlobAfterCut(pick.file, isolated);
+      if (chosen !== isolated) {
+        setCutStatus(cutFailCopy("fail"));
+        toast(cutFailCopy("fail"));
+        return;
+      }
+
+      const cutId = uid("p");
+      await putPhoto(cutId, isolated);
+      if (!stillThisJob()) {
+        await deletePhoto(cutId);
+        throw new DOMException("Aborted", "AbortError");
+      }
+      job.stagingId = cutId;
+      setImageBlobId(cutId);
+      showPreview(URL.createObjectURL(isolated));
+      setCutStatus("Isolated cut saved");
+      setShowFuller(false);
+    } catch (err) {
+      if (cutJob.current !== job) return;
+      const kind = classifyCutError(err);
+      if (kind === "timeout" && ac.signal.aborted) return;
+      setCutStatus(cutFailCopy(kind));
+      toast(cutFailCopy(kind));
+    } finally {
+      if (cutJob.current === job) {
+        cutJob.current = null;
+        setCutting(false);
       }
     }
   }
@@ -244,7 +312,9 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
     cutting,
     savingOriginal,
     cutStatus,
+    showFuller,
     pickPhoto,
+    runFuller,
     abortCut,
   };
 }
@@ -253,13 +323,17 @@ function PhotoField({
   photo,
   cutting,
   cutStatus,
+  showFuller,
   onPick,
+  onFuller,
   frame = "garment",
 }: {
   photo?: string;
   cutting: boolean;
   cutStatus: string;
+  showFuller: boolean;
   onPick: (file: File) => void;
+  onFuller: () => void;
   frame?: "garment" | "product";
 }) {
   return (
@@ -318,16 +392,28 @@ function PhotoField({
               }}
             />
           </label>
+          {showFuller ? (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={cutting}
+              className="h-11 justify-start px-3 text-sm"
+              onClick={onFuller}
+            >
+              Fuller isolation
+            </Button>
+          ) : null}
         </div>
       </div>
       {cutting || cutStatus ? (
         <p className="mt-2 text-xs text-muted">
-          {cutStatus || "Isolating from the floor…"}
+          {cutStatus || "Quick sweep of the floor…"}
         </p>
       ) : (
         <p className="mt-2 text-xs text-muted">
-          Lay it flat. If isolation fails, your original photo still becomes
-          the tile.
+          Lay it flat. A quick sweep knocks the floor first. If that fails,
+          tap Fuller isolation — it takes longer. Your original photo still
+          becomes the tile if both miss.
         </p>
       )}
     </Field>
@@ -375,7 +461,9 @@ export function GarmentFormDialog({
     cutting,
     savingOriginal,
     cutStatus,
+    showFuller,
     pickPhoto,
+    runFuller,
     abortCut,
   } = useCuttablePhoto(
     initial?.imageBlobId || initial?.photoBlobId,
@@ -396,7 +484,7 @@ export function GarmentFormDialog({
     >
       <DialogContent
         title={initial ? "Edit piece" : "Add a piece"}
-        description="Photo on the floor. Isolation knocks the background off. If that fails, the original photo still becomes the tile."
+        description="Photo on the floor. A quick sweep knocks the background. If that misses, tap Fuller isolation. The original photo still becomes the tile if both miss."
       >
         <form
           className="flex flex-col gap-4"
@@ -434,6 +522,8 @@ export function GarmentFormDialog({
             photo={photo}
             cutting={cutting}
             cutStatus={cutStatus}
+            showFuller={showFuller}
+            onFuller={() => void runFuller()}
             onPick={(file) => void pickPhoto(file, "garment")}
           />
           <Field label="Name">
@@ -634,7 +724,9 @@ export function ExtraFormDialog({
     cutting,
     savingOriginal,
     cutStatus,
+    showFuller,
     pickPhoto,
+    runFuller,
     abortCut,
   } = useCuttablePhoto(
       initial?.imageBlobId || initial?.photoBlobId,
@@ -653,7 +745,7 @@ export function ExtraFormDialog({
     >
       <DialogContent
         title={initial ? "Edit piece" : "Add a piece"}
-        description="Photo on the floor. Isolation knocks the background off. If that fails, the original photo still becomes the tile."
+        description="Photo on the floor. A quick sweep knocks the background. If that misses, tap Fuller isolation. The original photo still becomes the tile if both miss."
       >
         <form
           className="flex flex-col gap-4"
@@ -693,7 +785,9 @@ export function ExtraFormDialog({
             photo={photo}
             cutting={cutting}
             cutStatus={cutStatus}
+            showFuller={showFuller}
             frame="product"
+            onFuller={() => void runFuller()}
             onPick={(file) => void pickPhoto(file, "product")}
           />
           <Field label="Name">

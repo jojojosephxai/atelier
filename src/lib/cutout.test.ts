@@ -4,6 +4,8 @@ import {
   classifyCutError,
   cutFailCopy,
   dropFloorHalo,
+  floodFillFloor,
+  opaqueShare,
   refineMatte,
   stripHanger,
   tileBlobAfterCut,
@@ -324,5 +326,37 @@ describe("failed cut still keeps a photo", () => {
       "timeout",
     );
     assert.equal(classifyCutError(new Error("No garment in the cut")), "fail");
+  });
+});
+
+describe("quick floor sweep", () => {
+  it("flood-fills beige floor from the corners and keeps a dark garment", () => {
+    const img = makeImageData(24, 24, (x, y, px, i) => {
+      const piece = x >= 7 && x <= 16 && y >= 6 && y <= 18;
+      if (piece) {
+        px[i] = 28;
+        px[i + 1] = 36;
+        px[i + 2] = 72;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i] = 236;
+      px[i + 1] = 232;
+      px[i + 2] = 224;
+      px[i + 3] = 255;
+    });
+    floodFillFloor(img);
+    assert.equal(pxAt(img, 0, 0).a, 0);
+    assert.equal(pxAt(img, 23, 0).a, 0);
+    assert.equal(pxAt(img, 0, 23).a, 0);
+    assert.equal(pxAt(img, 23, 23).a, 0);
+    assert.equal(pxAt(img, 12, 12).a, 255);
+    assert.ok(opaqueShare(img) > 0.1);
+    assert.ok(opaqueShare(img) < 0.5);
+  });
+
+  it("does not count a failed sweep as a kept cut", () => {
+    const original = new Blob([new Uint8Array(200)], { type: "image/jpeg" });
+    assert.equal(tileBlobAfterCut(original, null), original);
   });
 });
