@@ -14,9 +14,16 @@ scripts/__pycache__/
 .grok/preview.log
 .grok/status
 .grok/project_memory.md
-.grok/skills/
+.grok/skills/*
+!.grok/skills/og/
+!.grok/skills/og/**
 .grok/references/
 .env
 .env.local
 .node_modules.lock
 .project_id
+.superdesign/tmp/
+.superdesign/init/
+.superdesign/resume.json
+.superdesign/design-system.md
+.superdesign/website/

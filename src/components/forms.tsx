@@ -4,9 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, NativeSelect, Textarea } from "@/components/ui/field";
 import { FASHION_PALETTE } from "@/lib/colors";
-import { cutBudget, cutGarment, cutProduct } from "@/lib/cutout";
+import {
+  classifyCutError,
+  cutBudget,
+  cutFailCopy,
+  cutGarment,
+  cutProduct,
+  tileBlobAfterCut,
+  type CutMode,
+} from "@/lib/cutout";
 import { deletePhoto, putPhoto } from "@/lib/photo-db";
-import { uid } from "@/lib/utils";
+import { uid, cn } from "@/lib/utils";
 import type {
   Climate,
   Extra,
@@ -35,7 +43,6 @@ import {
   SLOT_LABELS,
   SUGGESTED_TAGS,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 function ChipGroup<T extends string>({
   options,
@@ -86,6 +93,219 @@ function ChipGroup<T extends string>({
   );
 }
 
+type CutJob = {
+  ac: AbortController;
+  stagingId?: string;
+  putOk: boolean;
+  floorUrl?: string;
+};
+
+/** Save the original photo first so the tile is never blank, then isolate. */
+function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
+  const [imageBlobId, setImageBlobId] = useState(initialBlobId);
+  const [preview, setPreview] = useState(initialSrc);
+  const [cutting, setCutting] = useState(false);
+  const [cutStatus, setCutStatus] = useState("");
+  const photo = preview || initialSrc;
+  const cutJob = useRef<CutJob | null>(null);
+  const blobIdRef = useRef(imageBlobId);
+  blobIdRef.current = imageBlobId;
+
+  useEffect(() => {
+    return () => abortCut(true);
+  }, []);
+
+  function abortCut(fromUnmount = false) {
+    const job = cutJob.current;
+    if (!job) return;
+    job.ac.abort();
+    if (job.floorUrl) URL.revokeObjectURL(job.floorUrl);
+    if (job.stagingId && !job.putOk) void deletePhoto(job.stagingId);
+    cutJob.current = null;
+    if (!fromUnmount) setCutting(false);
+  }
+
+  async function pickPhoto(file: File, mode: CutMode) {
+    abortCut();
+    const ac = new AbortController();
+    const job: CutJob = { ac, putOk: false };
+    cutJob.current = job;
+    const originalUrl = URL.createObjectURL(file);
+    job.floorUrl = originalUrl;
+    setPreview(originalUrl);
+    setCutting(true);
+    setCutStatus("Saving your photo…");
+
+    const stillThisJob = () =>
+      !ac.signal.aborted && cutJob.current === job;
+
+    try {
+      const originalId = uid("p");
+      job.stagingId = originalId;
+      await putPhoto(originalId, file);
+      if (!stillThisJob()) {
+        await deletePhoto(originalId);
+        throw new DOMException("Aborted", "AbortError");
+      }
+      job.putOk = true;
+      const prevId = blobIdRef.current;
+      if (prevId && prevId !== originalId) void deletePhoto(prevId);
+      setImageBlobId(originalId);
+
+      const budget = cutBudget();
+      if (!budget.ok) {
+        setCutStatus(cutFailCopy("limit"));
+        toast(cutFailCopy("limit"));
+        return;
+      }
+
+      setCutStatus("Isolating from the floor…");
+      const isolated =
+        mode === "product"
+          ? await cutProduct(file, setCutStatus, ac.signal)
+          : await cutGarment(file, setCutStatus, ac.signal);
+      if (!stillThisJob()) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      const chosen = tileBlobAfterCut(file, isolated);
+      if (chosen !== isolated) {
+        setCutStatus(cutFailCopy("fail"));
+        toast(cutFailCopy("fail"));
+        return;
+      }
+
+      const cutId = uid("p");
+      await putPhoto(cutId, isolated);
+      if (!stillThisJob()) {
+        await deletePhoto(cutId);
+        throw new DOMException("Aborted", "AbortError");
+      }
+      void deletePhoto(originalId);
+      job.stagingId = cutId;
+      setImageBlobId(cutId);
+      URL.revokeObjectURL(originalUrl);
+      const cutUrl = URL.createObjectURL(isolated);
+      job.floorUrl = cutUrl;
+      setPreview(cutUrl);
+      setCutStatus("Isolated cut saved");
+    } catch (err) {
+      if (cutJob.current !== job) return;
+      const kind = classifyCutError(err);
+      if (!job.putOk) {
+        try {
+          const fallbackId = uid("p");
+          job.stagingId = fallbackId;
+          await putPhoto(fallbackId, file);
+          job.putOk = true;
+          const prevId = blobIdRef.current;
+          if (prevId && prevId !== fallbackId) void deletePhoto(prevId);
+          setImageBlobId(fallbackId);
+          if (!job.floorUrl) {
+            job.floorUrl = originalUrl;
+            setPreview(originalUrl);
+          }
+        } catch {
+          /* photo store unavailable — status still explains it */
+        }
+      }
+      setCutStatus(cutFailCopy(kind));
+      toast(cutFailCopy(kind));
+    } finally {
+      if (cutJob.current === job) {
+        cutJob.current = null;
+        setCutting(false);
+      }
+    }
+  }
+
+  return { imageBlobId, photo, cutting, cutStatus, pickPhoto, abortCut };
+}
+
+function PhotoField({
+  photo,
+  cutting,
+  cutStatus,
+  onPick,
+  frame = "garment",
+}: {
+  photo?: string;
+  cutting: boolean;
+  cutStatus: string;
+  onPick: (file: File) => void;
+  frame?: "garment" | "product";
+}) {
+  return (
+    <Field label="Photo">
+      <div className="flex items-center gap-3">
+        <div
+          className={
+            frame === "product"
+              ? "outfit-studio size-20 overflow-hidden rounded-lg"
+              : "outfit-studio h-28 w-[5.25rem] overflow-hidden rounded-lg"
+          }
+        >
+          {photo ? (
+            <img
+              src={photo}
+              alt=""
+              className="size-full object-contain object-center"
+            />
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-2">
+          <label
+            className={cn(
+              "inline-flex h-11 cursor-pointer items-center rounded-md bg-raised px-3 text-sm text-fg shadow-[var(--shadow-border)]",
+              cutting && "pointer-events-none opacity-50",
+            )}
+          >
+            Take photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onPick(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label
+            className={cn(
+              "inline-flex h-11 cursor-pointer items-center rounded-md bg-raised px-3 text-sm text-fg shadow-[var(--shadow-border)]",
+              cutting && "pointer-events-none opacity-50",
+            )}
+          >
+            Photo library
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onPick(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      </div>
+      {cutting || cutStatus ? (
+        <p className="mt-2 text-xs text-muted">
+          {cutStatus || "Isolating from the floor…"}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-muted">
+          Lay it flat. If isolation fails, your original photo still becomes
+          the tile.
+        </p>
+      )}
+    </Field>
+  );
+}
+
 export function GarmentFormDialog({
   open,
   onOpenChange,
@@ -120,89 +340,13 @@ export function GarmentFormDialog({
   );
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
-  const [imageBlobId, setImageBlobId] = useState(initial?.imageBlobId);
-  const [preview, setPreview] = useState(initial?.imageSrc);
-  const [imageSrc] = useState(initial?.imageSrc);
   const [details, setDetails] = useState(Boolean(initial));
-  const [cutting, setCutting] = useState(false);
-  const [cutStatus, setCutStatus] = useState("");
-  const photo = preview || imageSrc;
-  const cutJob = useRef<{
-    ac: AbortController;
-    stagingId?: string;
-    putOk: boolean;
-    floorUrl?: string;
-  } | null>(null);
-
-  useEffect(() => {
-    return () => abortCut(true);
-  }, []);
-
-  function abortCut(fromUnmount = false) {
-    const job = cutJob.current;
-    if (!job) return;
-    job.ac.abort();
-    if (job.floorUrl) URL.revokeObjectURL(job.floorUrl);
-    if (job.stagingId && !job.putOk) void deletePhoto(job.stagingId);
-    cutJob.current = null;
-    if (!fromUnmount) setCutting(false);
-  }
-
-  async function onPickFile(file?: File) {
-    if (!file) return;
-    abortCut();
-    const budget = cutBudget();
-    if (!budget.ok) {
-      toast.error("Cut limit reached for today");
-      setCutStatus("Cut limit reached for today");
-      return;
-    }
-    const ac = new AbortController();
-    const job = {
-      ac,
-      putOk: false as boolean,
-      stagingId: undefined as string | undefined,
-    };
-    cutJob.current = job;
-    setCutting(true);
-    setCutStatus("Cutting…");
-    try {
-      const blob = await cutGarment(file, setCutStatus, ac.signal);
-      if (ac.signal.aborted || cutJob.current !== job) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      if (!blob || blob.size < 64) throw new Error("No garment in the cut");
-      const id = uid("p");
-      job.stagingId = id;
-      await putPhoto(id, blob);
-      if (ac.signal.aborted || cutJob.current !== job) {
-        await deletePhoto(id);
-        throw new DOMException("Aborted", "AbortError");
-      }
-      job.putOk = true;
-      if (imageBlobId && imageBlobId !== id) void deletePhoto(imageBlobId);
-      if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-      setImageBlobId(id);
-      setPreview(URL.createObjectURL(blob));
-      setCutStatus("Isolated cut saved");
-    } catch (err) {
-      if (job.stagingId && !job.putOk) void deletePhoto(job.stagingId);
-      const aborted =
-        (err instanceof DOMException && err.name === "AbortError") ||
-        (err instanceof Error && /abort|timed out/i.test(err.message));
-      const limit = err instanceof Error && /limit/i.test(err.message);
-      const msg = limit
-        ? "Cut limit reached for today"
-        : aborted
-          ? "Cut timed out"
-          : "Could not cut that photo";
-      setCutStatus(msg);
-      toast.error(aborted ? "Could not cut that photo" : msg);
-    } finally {
-      if (cutJob.current === job) cutJob.current = null;
-      setCutting(false);
-    }
-  }
+  const photoCut = useCuttablePhoto(
+    initial?.imageBlobId,
+    initial?.imageSrc,
+  );
+  const { imageBlobId, photo, cutting, cutStatus, pickPhoto, abortCut } =
+    photoCut;
 
   const fourReady = Boolean(
     name.trim() && category && formality && climate.length && colorName,
@@ -218,14 +362,13 @@ export function GarmentFormDialog({
     >
       <DialogContent
         title={initial ? "Edit piece" : "Add a piece"}
-        description="Photo on the floor. On-device AI knocks the background and saves an isolated tile."
+        description="Photo on the floor. Isolation knocks the background off. If that fails, the original photo still becomes the tile."
       >
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim() || !category) return;
-            if (cutting) return;
             if (!fourReady) {
               toast.error(
                 "Looks need category, formality, climate, and color family.",
@@ -245,70 +388,19 @@ export function GarmentFormDialog({
               climate,
               notes: notes.trim(),
               tags,
-              imageSrc: imageBlobId ? undefined : imageSrc,
+              imageSrc: imageBlobId ? undefined : initial?.imageSrc,
               imageBlobId,
               photoBlobId: imageBlobId,
             });
             onOpenChange(false);
           }}
         >
-          <Field label="Photo">
-            <div className="flex items-center gap-3">
-              <div className="outfit-studio h-28 w-[5.25rem] overflow-hidden rounded-lg">
-                {photo ? (
-                  <img
-                    src={photo}
-                    alt=""
-                    className="size-full object-contain object-center"
-                  />
-                ) : null}
-              </div>
-              <div className="flex flex-col gap-2">
-                <label
-                  className={cn(
-                    "inline-flex h-11 cursor-pointer items-center rounded-md bg-raised px-3 text-sm text-fg shadow-[var(--shadow-border)]",
-                    cutting && "pointer-events-none opacity-50",
-                  )}
-                >
-                  Take photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onPickFile(e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <label
-                  className={cn(
-                    "inline-flex h-11 cursor-pointer items-center rounded-md bg-raised px-3 text-sm text-fg shadow-[var(--shadow-border)]",
-                    cutting && "pointer-events-none opacity-50",
-                  )}
-                >
-                  Photo library
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onPickFile(e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-            {cutting || cutStatus ? (
-              <p className="mt-2 text-xs text-muted">{cutStatus || "Cutting…"}</p>
-            ) : (
-              <p className="mt-2 text-xs text-muted">
-                Lay it flat. Floor knocks out. Isolated cut, not the floor photo.
-              </p>
-            )}
-          </Field>
+          <PhotoField
+            photo={photo}
+            cutting={cutting}
+            cutStatus={cutStatus}
+            onPick={(file) => void pickPhoto(file, "garment")}
+          />
           <Field label="Name">
             <Input
               required
@@ -453,8 +545,8 @@ export function GarmentFormDialog({
             </>
           ) : null}
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="submit" disabled={cutting || !fourReady}>
-              {cutting ? "Cutting…" : initial ? "Save changes" : "Add piece"}
+            <Button type="submit" disabled={!fourReady}>
+              {initial ? "Save changes" : "Add piece"}
             </Button>
             {onDelete ? (
               <Button type="button" variant="danger" onClick={onDelete}>
@@ -497,89 +589,11 @@ export function ExtraFormDialog({
   );
   const [slot, setSlot] = useState<SkincareSlot>(initial?.slot ?? "both");
   const [step, setStep] = useState(initial?.step ?? 1);
-  const [imageBlobId, setImageBlobId] = useState(
-    initial?.imageBlobId || initial?.photoBlobId,
-  );
-  const [preview, setPreview] = useState(initial?.imageSrc);
-  const [cutting, setCutting] = useState(false);
-  const [cutStatus, setCutStatus] = useState("");
-  const photo = preview || initial?.imageSrc;
-  const cutJob = useRef<{
-    ac: AbortController;
-    stagingId?: string;
-    putOk: boolean;
-    floorUrl?: string;
-  } | null>(null);
-
-  useEffect(() => {
-    return () => abortCut(true);
-  }, []);
-
-  function abortCut(fromUnmount = false) {
-    const job = cutJob.current;
-    if (!job) return;
-    job.ac.abort();
-    if (job.floorUrl) URL.revokeObjectURL(job.floorUrl);
-    if (job.stagingId && !job.putOk) void deletePhoto(job.stagingId);
-    cutJob.current = null;
-    if (!fromUnmount) setCutting(false);
-  }
-
-  async function onPickFile(file?: File) {
-    if (!file) return;
-    abortCut();
-    const budget = cutBudget();
-    if (!budget.ok) {
-      toast.error("Cut limit reached for today");
-      setCutStatus("Cut limit reached for today");
-      return;
-    }
-    const ac = new AbortController();
-    const job = {
-      ac,
-      putOk: false as boolean,
-      stagingId: undefined as string | undefined,
-    };
-    cutJob.current = job;
-    setCutting(true);
-    setCutStatus("Cutting…");
-    try {
-      const blob = await cutProduct(file, setCutStatus, ac.signal);
-      if (ac.signal.aborted || cutJob.current !== job) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      if (!blob || blob.size < 64) throw new Error("No garment in the cut");
-      const id = uid("p");
-      job.stagingId = id;
-      await putPhoto(id, blob);
-      if (ac.signal.aborted || cutJob.current !== job) {
-        await deletePhoto(id);
-        throw new DOMException("Aborted", "AbortError");
-      }
-      job.putOk = true;
-      if (imageBlobId && imageBlobId !== id) void deletePhoto(imageBlobId);
-      if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-      setImageBlobId(id);
-      setPreview(URL.createObjectURL(blob));
-      setCutStatus("Isolated cut saved");
-    } catch (err) {
-      if (job.stagingId && !job.putOk) void deletePhoto(job.stagingId);
-      const aborted =
-        (err instanceof DOMException && err.name === "AbortError") ||
-        (err instanceof Error && /abort|timed out/i.test(err.message));
-      const limit = err instanceof Error && /limit/i.test(err.message);
-      const msg = limit
-        ? "Cut limit reached for today"
-        : aborted
-          ? "Cut timed out"
-          : "Could not cut that photo";
-      setCutStatus(msg);
-      toast.error(aborted ? "Could not cut that photo" : msg);
-    } finally {
-      if (cutJob.current === job) cutJob.current = null;
-      setCutting(false);
-    }
-  }
+  const { imageBlobId, photo, cutting, cutStatus, pickPhoto, abortCut } =
+    useCuttablePhoto(
+      initial?.imageBlobId || initial?.photoBlobId,
+      initial?.imageSrc,
+    );
 
   const ready = Boolean(name.trim() && kind);
 
@@ -593,13 +607,13 @@ export function ExtraFormDialog({
     >
       <DialogContent
         title={initial ? "Edit piece" : "Add a piece"}
-        description="Photo on the floor. On-device AI knocks the background and saves an isolated tile."
+        description="Photo on the floor. Isolation knocks the background off. If that fails, the original photo still becomes the tile."
       >
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!ready || cutting) return;
+            if (!ready) return;
             onSave({
               name: name.trim(),
               brand: brand.trim(),
@@ -629,63 +643,13 @@ export function ExtraFormDialog({
             onOpenChange(false);
           }}
         >
-          <Field label="Photo">
-            <div className="flex items-center gap-3">
-              <div className="outfit-studio size-20 overflow-hidden rounded-lg">
-                {photo ? (
-                  <img
-                    src={photo}
-                    alt=""
-                    className="size-full object-contain object-center"
-                  />
-                ) : null}
-              </div>
-              <div className="flex flex-col gap-2">
-                <label
-                  className={cn(
-                    "inline-flex h-11 cursor-pointer items-center rounded-md bg-raised px-3 text-sm text-fg shadow-[var(--shadow-border)]",
-                    cutting && "pointer-events-none opacity-50",
-                  )}
-                >
-                  Take photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onPickFile(e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <label
-                  className={cn(
-                    "inline-flex h-11 cursor-pointer items-center rounded-md bg-raised px-3 text-sm text-fg shadow-[var(--shadow-border)]",
-                    cutting && "pointer-events-none opacity-50",
-                  )}
-                >
-                  Photo library
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onPickFile(e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-            {cutting || cutStatus ? (
-              <p className="mt-2 text-xs text-muted">{cutStatus || "Cutting…"}</p>
-            ) : (
-              <p className="mt-2 text-xs text-muted">
-                Lay it flat. Floor knocks out. Isolated cut, not the floor photo.
-              </p>
-            )}
-          </Field>
+          <PhotoField
+            photo={photo}
+            cutting={cutting}
+            cutStatus={cutStatus}
+            frame="product"
+            onPick={(file) => void pickPhoto(file, "product")}
+          />
           <Field label="Name">
             <Input
               required
@@ -786,8 +750,8 @@ export function ExtraFormDialog({
             />
           </Field>
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="submit" disabled={cutting || !ready}>
-              {cutting ? "Cutting…" : initial ? "Save changes" : "Add piece"}
+            <Button type="submit" disabled={!ready}>
+              {initial ? "Save changes" : "Add piece"}
             </Button>
             {onDelete ? (
               <Button type="button" variant="danger" onClick={onDelete}>

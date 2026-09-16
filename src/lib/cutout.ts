@@ -22,7 +22,9 @@ const WARM_MS = 30_000;
 
 export type CutMode = "garment" | "product";
 
-type CutProfile = {
+export type CutFailKind = "limit" | "timeout" | "fail";
+
+export type CutProfile = {
   maxEdge: number;
   /** Mid-alpha below this becomes transparent. */
   alphaKill: number;
@@ -31,24 +33,61 @@ type CutProfile = {
   /** Erode opaque alpha by this many px before rebuild (kills fringe). */
   edgeTrim: number;
   stripHanger: boolean;
+  /** Drop leftover floor-colored fringe (garment tiles). */
+  haloTrim?: boolean;
+  /** Keep high-contrast label pixels (grooming bottles). */
+  protectLabels?: boolean;
 };
 
 const PROFILES: Record<CutMode, CutProfile> = {
   garment: {
     maxEdge: 1280,
-    alphaKill: 56,
+    alphaKill: 64,
     alphaSolid: 200,
     edgeTrim: 1,
     stripHanger: true,
+    haloTrim: true,
+    protectLabels: false,
   },
   product: {
     maxEdge: 1600,
-    alphaKill: 72,
+    alphaKill: 80,
     alphaSolid: 220,
-    edgeTrim: 2,
+    edgeTrim: 1,
     stripHanger: false,
+    haloTrim: false,
+    protectLabels: true,
   },
 };
+
+const MIN_TILE_BYTES = 64;
+
+/** Isolated PNG when the cutter worked; otherwise the original photo. */
+export function tileBlobAfterCut(
+  original: Blob,
+  cut: Blob | null | undefined,
+): Blob {
+  if (cut && cut.size >= MIN_TILE_BYTES) return cut;
+  return original;
+}
+
+export function cutFailCopy(kind: CutFailKind): string {
+  if (kind === "limit") {
+    return "That's today's isolation limit. Your original photo is saved on the tile.";
+  }
+  if (kind === "timeout") {
+    return "Isolation took too long. Your original photo is saved on the tile.";
+  }
+  return "Couldn't isolate this photo. Your original photo is saved on the tile.";
+}
+
+export function classifyCutError(err: unknown): CutFailKind {
+  const msg = err instanceof Error ? err.message : "";
+  const name = err instanceof DOMException ? err.name : "";
+  if (/limit/i.test(msg)) return "limit";
+  if (name === "AbortError" || /abort|timed out/i.test(msg)) return "timeout";
+  return "fail";
+}
 
 let cutterWarm = false;
 let preloadP: Promise<void> | null = null;
@@ -192,7 +231,8 @@ async function runCut(
       abortPromise(local.signal),
     ]);
     died();
-    if (!isolated || isolated.size < 64) throw new Error("No garment in the cut");
+    if (!isolated || isolated.size < MIN_TILE_BYTES)
+      throw new Error("No garment in the cut");
     noteCutSuccess();
     return isolated;
   } finally {
@@ -232,7 +272,9 @@ async function finishCut(cut: Blob, profile: CutProfile): Promise<Blob> {
 
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
   refineMatte(data, profile);
-  if (!cornersStillFloor(data)) {
+  // Product tiles must keep the whole bottle + label even if a patch
+  // looks disconnected. Garment tiles still drop floating floor debris.
+  if (!profile.protectLabels && !cornersStillFloor(data)) {
     keepMainSubject(data);
   }
   if (profile.stripHanger) {
@@ -311,11 +353,15 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
   const w = img.width;
   const h = img.height;
   const n = w * h;
+  const protectLabels = profile.protectLabels === true;
+  const labels = protectLabels ? labelProtectMask(img) : null;
 
   // 1) Soft white / gray matte → transparent (never eat solid opaque whites).
+  //    Product labels are often white paper — leave them when already solid-ish.
   for (let i = 0; i < px.length; i += 4) {
     const a = px[i + 3];
     if (a === 0 || a >= 248) continue;
+    if (protectLabels && (a >= 160 || labels![(i / 4) | 0])) continue;
     const r = px[i];
     const g = px[i + 1];
     const b = px[i + 2];
@@ -327,10 +373,16 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
     }
   }
 
+  if (profile.haloTrim) dropFloorHalo(img, profile);
+
   // 2) Binary-ish alpha: kill fringe, solidify subject.
   for (let i = 3; i < px.length; i += 4) {
     const a = px[i];
     if (a === 0) continue;
+    if (protectLabels && labels![(i / 4) | 0] && a >= 80) {
+      px[i] = 255;
+      continue;
+    }
     if (a < profile.alphaKill) px[i] = 0;
     else if (a < profile.alphaSolid) px[i] = 255;
   }
@@ -346,6 +398,10 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
         for (let x = 1; x < w - 1; x++) {
           const idx = y * w + x;
           if (!cur[idx]) continue;
+          if (protectLabels && labels![idx]) {
+            next[idx] = 1;
+            continue;
+          }
           if (
             cur[idx - 1] &&
             cur[idx + 1] &&
@@ -359,16 +415,143 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
       cur = next;
     }
     for (let i = 0; i < n; i++) {
+      if (protectLabels && labels![i] && px[i * 4 + 3] > 0) {
+        px[i * 4 + 3] = 255;
+        continue;
+      }
       if (!cur[i]) px[i * 4 + 3] = 0;
       else if (px[i * 4 + 3] > 0) px[i * 4 + 3] = 255;
     }
   }
 
   // 4) Color decontamination on the remaining edge ring.
-  defringeRgb(img);
+  defringeRgb(img, labels);
 }
 
-function defringeRgb(img: ImageData): void {
+/** High-contrast patches on a bottle — treat as label ink/paper, not fringe. */
+function labelProtectMask(img: ImageData): Uint8Array {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const mask = new Uint8Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      if (px[i + 3] < 80) continue;
+      let minL = 255;
+      let maxL = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const j = ((y + dy) * w + (x + dx)) * 4;
+          if (px[j + 3] < 80) continue;
+          const L = (px[j] + px[j + 1] + px[j + 2]) / 3;
+          if (L < minL) minL = L;
+          if (L > maxL) maxL = L;
+        }
+      }
+      if (maxL - minL >= 36) mask[y * w + x] = 1;
+    }
+  }
+  return mask;
+}
+
+/**
+ * Kill leftover floor (beige / gray fringe) that the matte left around a garment.
+ * Skips pixels that match the interior cloth so pale coats stay intact.
+ */
+export function dropFloorHalo(img: ImageData, profile: CutProfile): void {
+  const px = img.data;
+  const w = img.width;
+  const h = img.height;
+  const n = w * h;
+
+  let ir = 0;
+  let ig = 0;
+  let ib = 0;
+  let ic = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] < profile.alphaSolid) continue;
+    const r = px[i];
+    const g = px[i + 1];
+    const b = px[i + 2];
+    const mx = Math.max(r, g, b);
+    const mn = Math.min(r, g, b);
+    const sat = mx === 0 ? 0 : (mx - mn) / mx;
+    if (mx / 255 > 0.62 && sat < 0.16) continue;
+    ir += r;
+    ig += g;
+    ib += b;
+    ic++;
+  }
+  const body: [number, number, number] | null =
+    ic >= 8 ? [ir / ic, ig / ic, ib / ic] : null;
+
+  const kill = new Uint8Array(n);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const i = idx * 4;
+      const a = px[i + 3];
+      if (a === 0 || a >= 248) continue;
+      const r = px[i];
+      const g = px[i + 1];
+      const b = px[i + 2];
+      const mx = Math.max(r, g, b);
+      const mn = Math.min(r, g, b);
+      const sat = mx === 0 ? 0 : (mx - mn) / mx;
+      const lum = (r + g + b) / (3 * 255);
+      if (!(sat < 0.22 && lum > 0.42)) continue;
+      if (body && colorDist(r, g, b, body) < 26) continue;
+      let nearClear = x <= 1 || y <= 1 || x >= w - 2 || y >= h - 2;
+      if (!nearClear) {
+        for (let dy = -2; dy <= 2 && !nearClear; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              nearClear = true;
+              break;
+            }
+            if (px[(ny * w + nx) * 4 + 3] < 18) {
+              nearClear = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!nearClear) continue;
+      kill[idx] = 1;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (kill[i]) px[i * 4 + 3] = 0;
+  }
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      if (px[i + 3] < 128) continue;
+      const r = px[i];
+      const g = px[i + 1];
+      const b = px[i + 2];
+      const mx = Math.max(r, g, b);
+      const mn = Math.min(r, g, b);
+      const sat = mx === 0 ? 0 : (mx - mn) / mx;
+      const lum = (r + g + b) / (3 * 255);
+      if (!(sat < 0.18 && lum > 0.5)) continue;
+      if (body && colorDist(r, g, b, body) < 30) continue;
+      let clearN = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (px[((y + dy) * w + (x + dx)) * 4 + 3] < 18) clearN++;
+        }
+      }
+      if (clearN >= 2) px[i + 3] = 0;
+    }
+  }
+}
+
+function defringeRgb(img: ImageData, labels?: Uint8Array | null): void {
   const w = img.width;
   const h = img.height;
   const px = img.data;
@@ -377,6 +560,7 @@ function defringeRgb(img: ImageData): void {
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const i = (y * w + x) * 4;
+      if (labels?.[y * w + x]) continue;
       if (src[i + 3] < 128) continue;
       let clear = false;
       for (let dy = -1; dy <= 1 && !clear; dy++) {
@@ -537,7 +721,7 @@ function colorDist(
 }
 
 /** Drop hook + bar. Keep the garment. Do not sew the collar shut. */
-function stripHanger(img: ImageData): void {
+export function stripHanger(img: ImageData): void {
   const w = img.width;
   const h = img.height;
   const px = img.data;
@@ -554,16 +738,17 @@ function stripHanger(img: ImageData): void {
   }
 
   let top = 0;
-  while (top < h && widths[top] < 8) top++;
+  while (top < h && widths[top] < 2) top++;
   let bot = h - 1;
-  while (bot > top && widths[bot] < 8) bot--;
+  while (bot > top && widths[bot] < 2) bot--;
   if (bot - top < 20) return;
 
   const hookLimit = maxW * 0.26;
   let afterHook = top;
   while (afterHook < bot && widths[afterHook] < hookLimit) afterHook++;
   let y = afterHook;
-  while (y < top + Math.round((bot - top) * 0.12) && widths[y] < maxW * 0.34) {
+  const hookBand = top + Math.round((bot - top) * 0.2);
+  while (y < hookBand && widths[y] < maxW * 0.45) {
     afterHook = y + 1;
     y++;
   }
@@ -644,9 +829,20 @@ function stripHanger(img: ImageData): void {
         }
       }
       if (!left || !right || !down || op < 8) continue;
-      px[i] = Math.round(rs / op);
-      px[i + 1] = Math.round(gs / op);
-      px[i + 2] = Math.round(bs / op);
+      const fr = rs / op;
+      const fg = gs / op;
+      const fb = bs / op;
+      if (
+        hangerDistinct &&
+        hookMean &&
+        bodyMean &&
+        colorDist(fr, fg, fb, hookMean) + 8 < colorDist(fr, fg, fb, bodyMean)
+      ) {
+        continue;
+      }
+      px[i] = Math.round(fr);
+      px[i + 1] = Math.round(fg);
+      px[i + 2] = Math.round(fb);
       px[i + 3] = 255;
     }
   }
