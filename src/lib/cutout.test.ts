@@ -152,13 +152,28 @@ describe("floor halo", () => {
       "control: mid-alpha floor would stay",
     );
 
-    dropFloorHalo(img, GARMENT_HALO);
     refineMatte(img, GARMENT_HALO);
 
     assert.equal(pxAt(img, 4, 8).a, 0);
     assert.equal(pxAt(img, 11, 8).a, 0);
     assert.equal(pxAt(img, 7, 7).a, 255);
     assert.ok(pxAt(img, 7, 7).b > 80);
+  });
+
+  it("keeps the interior of a pale garment", () => {
+    const img = makeImageData(14, 14, (x, y, px, i) => {
+      if (x >= 2 && x <= 11 && y >= 2 && y <= 11) {
+        px[i] = 248;
+        px[i + 1] = 247;
+        px[i + 2] = 244;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i + 3] = 0;
+    });
+    dropFloorHalo(img, GARMENT_HALO);
+    assert.equal(pxAt(img, 7, 7).a, 255);
+    assert.ok(pxAt(img, 7, 7).r > 200);
   });
 });
 
@@ -251,6 +266,30 @@ describe("product label", () => {
       const a = img.data[i]!;
       assert.ok(a === 0 || a === 255, `unexpected alpha ${a}`);
     }
+  });
+
+  it("still knocks a bright leftover floor ring, not just faint fringe", () => {
+    const img = makeImageData(20, 20, (x, y, px, i) => {
+      const bottle = x >= 6 && x <= 13 && y >= 5 && y <= 15;
+      if (bottle) {
+        px[i] = 18;
+        px[i + 1] = 72;
+        px[i + 2] = 48;
+        px[i + 3] = 255;
+        return;
+      }
+      if (x >= 4 && x <= 15 && y >= 3 && y <= 17) {
+        px[i] = 242;
+        px[i + 1] = 240;
+        px[i + 2] = 234;
+        px[i + 3] = 170;
+        return;
+      }
+      px[i + 3] = 0;
+    });
+    refineMatte(img, PRODUCT_LABEL);
+    assert.equal(pxAt(img, 4, 4).a, 0);
+    assert.equal(pxAt(img, 9, 10).a, 255);
   });
 });
 

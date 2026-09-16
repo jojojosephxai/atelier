@@ -272,9 +272,7 @@ async function finishCut(cut: Blob, profile: CutProfile): Promise<Blob> {
 
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
   refineMatte(data, profile);
-  // Product tiles must keep the whole bottle + label even if a patch
-  // looks disconnected. Garment tiles still drop floating floor debris.
-  if (!profile.protectLabels && !cornersStillFloor(data)) {
+  if (!cornersStillFloor(data)) {
     keepMainSubject(data);
   }
   if (profile.stripHanger) {
@@ -283,6 +281,7 @@ async function finishCut(cut: Blob, profile: CutProfile): Promise<Blob> {
     refineMatte(data, {
       ...profile,
       edgeTrim: 0,
+      haloTrim: false,
       alphaKill: Math.max(40, profile.alphaKill - 16),
     });
   }
@@ -361,7 +360,7 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
   for (let i = 0; i < px.length; i += 4) {
     const a = px[i + 3];
     if (a === 0 || a >= 248) continue;
-    if (protectLabels && (a >= 160 || labels![(i / 4) | 0])) continue;
+    if (protectLabels && labels![(i / 4) | 0]) continue;
     const r = px[i];
     const g = px[i + 1];
     const b = px[i + 2];
@@ -471,16 +470,9 @@ export function dropFloorHalo(img: ImageData, profile: CutProfile): void {
   let ic = 0;
   for (let i = 0; i < px.length; i += 4) {
     if (px[i + 3] < profile.alphaSolid) continue;
-    const r = px[i];
-    const g = px[i + 1];
-    const b = px[i + 2];
-    const mx = Math.max(r, g, b);
-    const mn = Math.min(r, g, b);
-    const sat = mx === 0 ? 0 : (mx - mn) / mx;
-    if (mx / 255 > 0.62 && sat < 0.16) continue;
-    ir += r;
-    ig += g;
-    ib += b;
+    ir += px[i];
+    ig += px[i + 1];
+    ib += px[i + 2];
     ic++;
   }
   const body: [number, number, number] | null =
@@ -527,10 +519,12 @@ export function dropFloorHalo(img: ImageData, profile: CutProfile): void {
     if (kill[i]) px[i * 4 + 3] = 0;
   }
 
+  const snap = new Uint8Array(n);
+  for (let i = 0; i < n; i++) snap[i] = px[i * 4 + 3];
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const i = (y * w + x) * 4;
-      if (px[i + 3] < 128) continue;
+      if (snap[y * w + x] < 128) continue;
       const r = px[i];
       const g = px[i + 1];
       const b = px[i + 2];
@@ -543,7 +537,7 @@ export function dropFloorHalo(img: ImageData, profile: CutProfile): void {
       let clearN = 0;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
-          if (px[((y + dy) * w + (x + dx)) * 4 + 3] < 18) clearN++;
+          if (snap[(y + dy) * w + (x + dx)] < 18) clearN++;
         }
       }
       if (clearN >= 2) px[i + 3] = 0;
@@ -746,12 +740,6 @@ export function stripHanger(img: ImageData): void {
   const hookLimit = maxW * 0.26;
   let afterHook = top;
   while (afterHook < bot && widths[afterHook] < hookLimit) afterHook++;
-  let y = afterHook;
-  const hookBand = top + Math.round((bot - top) * 0.2);
-  while (y < hookBand && widths[y] < maxW * 0.45) {
-    afterHook = y + 1;
-    y++;
-  }
 
   const hookMean = meanColor(px, w, top, afterHook, h);
   const bodyMean = meanColor(
@@ -762,7 +750,7 @@ export function stripHanger(img: ImageData): void {
     h,
   );
 
-  for (y = top; y < afterHook; y++) {
+  for (let y = top; y < afterHook; y++) {
     const row = y * w;
     for (let x = 0; x < w; x++) px[(row + x) * 4 + 3] = 0;
   }
@@ -778,7 +766,7 @@ export function stripHanger(img: ImageData): void {
   );
 
   if (hangerDistinct && hookMean) {
-    for (y = afterHook; y < bandEnd; y++) {
+    for (let y = afterHook; y < bandEnd; y++) {
       const row = y * w;
       for (let x = 0; x < w; x++) {
         const i = (row + x) * 4;
@@ -791,7 +779,7 @@ export function stripHanger(img: ImageData): void {
   }
 
   const shoulder = afterHook + Math.round((bot - top) * 0.08);
-  for (y = top; y < Math.min(shoulder, h); y++) {
+  for (let y = top; y < Math.min(shoulder, h); y++) {
     if (widths[y] >= maxW * 0.3) continue;
     const row = y * w;
     for (let x = 0; x < w; x++) px[(row + x) * 4 + 3] = 0;
@@ -800,7 +788,7 @@ export function stripHanger(img: ImageData): void {
   const tmp = new Uint8ClampedArray(px);
   const y0 = Math.max(1, afterHook - 2);
   const y1 = Math.min(h - 1, bandEnd + 4);
-  for (y = y0; y < y1; y++) {
+  for (let y = y0; y < y1; y++) {
     for (let x = 2; x < w - 2; x++) {
       const i = (y * w + x) * 4;
       if (tmp[i + 3] >= 18) continue;

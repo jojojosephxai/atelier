@@ -13,7 +13,7 @@ import {
   tileBlobAfterCut,
   type CutMode,
 } from "@/lib/cutout";
-import { deletePhoto, putPhoto } from "@/lib/photo-db";
+import { deletePhoto, photoUrl, putPhoto } from "@/lib/photo-db";
 import { uid, cn } from "@/lib/utils";
 import type {
   Climate,
@@ -105,24 +105,48 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
   const [imageBlobId, setImageBlobId] = useState(initialBlobId);
   const [preview, setPreview] = useState(initialSrc);
   const [cutting, setCutting] = useState(false);
+  const [savingOriginal, setSavingOriginal] = useState(false);
   const [cutStatus, setCutStatus] = useState("");
   const photo = preview || initialSrc;
   const cutJob = useRef<CutJob | null>(null);
-  const blobIdRef = useRef(imageBlobId);
-  blobIdRef.current = imageBlobId;
+  const previewUrlRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    return () => abortCut(true);
+    if (preview || !initialBlobId) return;
+    let live = true;
+    void photoUrl(initialBlobId).then((url) => {
+      if (live && url) setPreview(url);
+    });
+    return () => {
+      live = false;
+    };
+  }, [initialBlobId, preview]);
+
+  useEffect(() => {
+    return () => {
+      abortCut(true);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
   }, []);
+
+  function showPreview(url: string) {
+    if (previewUrlRef.current && previewUrlRef.current !== url) {
+      URL.revokeObjectURL(previewUrlRef.current);
+    }
+    previewUrlRef.current = url.startsWith("blob:") ? url : undefined;
+    setPreview(url);
+  }
 
   function abortCut(fromUnmount = false) {
     const job = cutJob.current;
     if (!job) return;
     job.ac.abort();
-    if (job.floorUrl) URL.revokeObjectURL(job.floorUrl);
     if (job.stagingId && !job.putOk) void deletePhoto(job.stagingId);
     cutJob.current = null;
-    if (!fromUnmount) setCutting(false);
+    if (!fromUnmount) {
+      setCutting(false);
+      setSavingOriginal(false);
+    }
   }
 
   async function pickPhoto(file: File, mode: CutMode) {
@@ -130,14 +154,16 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
     const ac = new AbortController();
     const job: CutJob = { ac, putOk: false };
     cutJob.current = job;
-    const originalUrl = URL.createObjectURL(file);
-    job.floorUrl = originalUrl;
-    setPreview(originalUrl);
+    showPreview(URL.createObjectURL(file));
+    setSavingOriginal(true);
     setCutting(true);
     setCutStatus("Saving your photo…");
 
     const stillThisJob = () =>
       !ac.signal.aborted && cutJob.current === job;
+    const report = (msg: string) => {
+      if (stillThisJob()) setCutStatus(msg);
+    };
 
     try {
       const originalId = uid("p");
@@ -148,9 +174,8 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
         throw new DOMException("Aborted", "AbortError");
       }
       job.putOk = true;
-      const prevId = blobIdRef.current;
-      if (prevId && prevId !== originalId) void deletePhoto(prevId);
       setImageBlobId(originalId);
+      setSavingOriginal(false);
 
       const budget = cutBudget();
       if (!budget.ok) {
@@ -159,11 +184,11 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
         return;
       }
 
-      setCutStatus("Isolating from the floor…");
+      report("Isolating from the floor…");
       const isolated =
         mode === "product"
-          ? await cutProduct(file, setCutStatus, ac.signal)
-          : await cutGarment(file, setCutStatus, ac.signal);
+          ? await cutProduct(file, report, ac.signal)
+          : await cutGarment(file, report, ac.signal);
       if (!stillThisJob()) {
         throw new DOMException("Aborted", "AbortError");
       }
@@ -180,13 +205,9 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
         await deletePhoto(cutId);
         throw new DOMException("Aborted", "AbortError");
       }
-      void deletePhoto(originalId);
       job.stagingId = cutId;
       setImageBlobId(cutId);
-      URL.revokeObjectURL(originalUrl);
-      const cutUrl = URL.createObjectURL(isolated);
-      job.floorUrl = cutUrl;
-      setPreview(cutUrl);
+      showPreview(URL.createObjectURL(isolated));
       setCutStatus("Isolated cut saved");
     } catch (err) {
       if (cutJob.current !== job) return;
@@ -197,28 +218,35 @@ function useCuttablePhoto(initialBlobId?: string, initialSrc?: string) {
           job.stagingId = fallbackId;
           await putPhoto(fallbackId, file);
           job.putOk = true;
-          const prevId = blobIdRef.current;
-          if (prevId && prevId !== fallbackId) void deletePhoto(prevId);
           setImageBlobId(fallbackId);
-          if (!job.floorUrl) {
-            job.floorUrl = originalUrl;
-            setPreview(originalUrl);
-          }
         } catch {
           /* photo store unavailable — status still explains it */
         }
       }
-      setCutStatus(cutFailCopy(kind));
-      toast(cutFailCopy(kind));
+      setCutStatus(
+        job.putOk ? cutFailCopy(kind) : "Couldn't save that photo. Try again.",
+      );
+      toast(
+        job.putOk ? cutFailCopy(kind) : "Couldn't save that photo. Try again.",
+      );
     } finally {
       if (cutJob.current === job) {
         cutJob.current = null;
         setCutting(false);
+        setSavingOriginal(false);
       }
     }
   }
 
-  return { imageBlobId, photo, cutting, cutStatus, pickPhoto, abortCut };
+  return {
+    imageBlobId,
+    photo,
+    cutting,
+    savingOriginal,
+    cutStatus,
+    pickPhoto,
+    abortCut,
+  };
 }
 
 function PhotoField({
@@ -341,12 +369,18 @@ export function GarmentFormDialog({
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
   const [details, setDetails] = useState(Boolean(initial));
-  const photoCut = useCuttablePhoto(
-    initial?.imageBlobId,
+  const {
+    imageBlobId,
+    photo,
+    cutting,
+    savingOriginal,
+    cutStatus,
+    pickPhoto,
+    abortCut,
+  } = useCuttablePhoto(
+    initial?.imageBlobId || initial?.photoBlobId,
     initial?.imageSrc,
   );
-  const { imageBlobId, photo, cutting, cutStatus, pickPhoto, abortCut } =
-    photoCut;
 
   const fourReady = Boolean(
     name.trim() && category && formality && climate.length && colorName,
@@ -369,6 +403,7 @@ export function GarmentFormDialog({
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim() || !category) return;
+            if (savingOriginal) return;
             if (!fourReady) {
               toast.error(
                 "Looks need category, formality, climate, and color family.",
@@ -545,8 +580,12 @@ export function GarmentFormDialog({
             </>
           ) : null}
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="submit" disabled={!fourReady}>
-              {initial ? "Save changes" : "Add piece"}
+            <Button type="submit" disabled={!fourReady || savingOriginal}>
+              {savingOriginal
+                ? "Saving photo…"
+                : initial
+                  ? "Save changes"
+                  : "Add piece"}
             </Button>
             {onDelete ? (
               <Button type="button" variant="danger" onClick={onDelete}>
@@ -589,8 +628,15 @@ export function ExtraFormDialog({
   );
   const [slot, setSlot] = useState<SkincareSlot>(initial?.slot ?? "both");
   const [step, setStep] = useState(initial?.step ?? 1);
-  const { imageBlobId, photo, cutting, cutStatus, pickPhoto, abortCut } =
-    useCuttablePhoto(
+  const {
+    imageBlobId,
+    photo,
+    cutting,
+    savingOriginal,
+    cutStatus,
+    pickPhoto,
+    abortCut,
+  } = useCuttablePhoto(
       initial?.imageBlobId || initial?.photoBlobId,
       initial?.imageSrc,
     );
@@ -613,7 +659,7 @@ export function ExtraFormDialog({
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!ready) return;
+            if (!ready || savingOriginal) return;
             onSave({
               name: name.trim(),
               brand: brand.trim(),
@@ -750,8 +796,12 @@ export function ExtraFormDialog({
             />
           </Field>
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="submit" disabled={!ready}>
-              {initial ? "Save changes" : "Add piece"}
+            <Button type="submit" disabled={!ready || savingOriginal}>
+              {savingOriginal
+                ? "Saving photo…"
+                : initial
+                  ? "Save changes"
+                  : "Add piece"}
             </Button>
             {onDelete ? (
               <Button type="button" variant="danger" onClick={onDelete}>
