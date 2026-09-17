@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>J.A.R.V.I.S. — Joseph</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/jarvis.css" />
+    <link rel="stylesheet" href="./css/hex.css" />
+  </head>
+  <body>
+    <!-- BOOT SEQUENCE -->
+    <div id="boot" class="boot" aria-live="polite">
+      <div class="boot__grid"></div>
+      <div class="boot__reactor" aria-hidden="true">
+        <div class="boot__ring boot__ring--a"></div>
+        <div class="boot__ring boot__ring--b"></div>
+        <div class="boot__ring boot__ring--c"></div>
+        <div class="boot__core"></div>
+      </div>
+      <div class="boot__copy">
+        <p class="boot__eyebrow">Stark OS · personal instance</p>
+        <h1 class="boot__brand">J.A.R.V.I.S.</h1>
+        <p class="boot__tag">Just A Rather Very Intelligent System</p>
+        <ul id="boot-log" class="boot__log"></ul>
+        <div class="boot__bar"><span id="boot-bar"></span></div>
+        <p id="boot-pct" class="boot__pct">0%</p>
+      </div>
+      <button id="skip-boot" class="boot__skip" type="button">Skip</button>
+    </div>
+
+    <!-- MAIN HUD -->
+    <div id="hud" class="hud is-hidden" hidden>
+      <canvas id="starfield" class="hud__stars" aria-hidden="true"></canvas>
+      <div class="hud__hex" aria-hidden="true"></div>
+      <div class="hud__atmosphere" aria-hidden="true"></div>
+      <div class="hud__scanlines" aria-hidden="true"></div>
+
+      <header class="topbar">
+        <div class="topbar__brand">
+          <span class="topbar__mark" aria-hidden="true"></span>
+          <div>
+            <p class="topbar__title">J.A.R.V.I.S.</p>
+            <p class="topbar__sub">Joseph Apoian · Conestoga HS</p>
+          </div>
+        </div>
+        <div class="topbar__status">
+          <span id="state-pill" class="pill pill--idle">STANDBY</span>
+          <time id="clock" class="clock"></time>
+        </div>
+      </header>
+
+      <main class="stage">
+        <div class="frame frame--tl" aria-hidden="true"></div>
+        <div class="frame frame--tr" aria-hidden="true"></div>
+        <div class="frame frame--bl" aria-hidden="true"></div>
+        <div class="frame frame--br" aria-hidden="true"></div>
+
+        <aside class="panel panel--left">
+          <h2 class="panel__h">Systems</h2>
+          <ul class="syslist" id="syslist">
+            <li><span>Voice I/O</span><b id="sys-voice">READY</b></li>
+            <li><span>Profile</span><b id="sys-profile">LOADED</b></li>
+            <li><span>School context</span><b>ACTIVE</b></li>
+            <li><span>Swim calendar</span><b>ACTIVE</b></li>
+            <li><span>Cursor link</span><b id="sys-cursor" class="dim">PHASE 2</b></li>
+          </ul>
+          <h2 class="panel__h">Tonight</h2>
+          <ol class="tonight" id="tonight-list"></ol>
+        </aside>
+
+        <section class="center">
+          <div class="orb" id="orb" aria-hidden="true">
+            <div class="orb__ring orb__ring--1"></div>
+            <div class="orb__ring orb__ring--2"></div>
+            <div class="orb__ring orb__ring--3"></div>
+            <div class="orb__core"></div>
+            <div class="orb__pulse"></div>
+          </div>
+          <p id="listen-hint" class="listen-hint">Say “Hey Jarvis” or press the mic</p>
+          <div id="wave" class="wave" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div id="transcript" class="transcript" aria-live="polite"></div>
+        </section>
+
+        <aside class="panel panel--right">
+          <h2 class="panel__h">Overnight</h2>
+          <div id="overnight" class="briefing"></div>
+          <h2 class="panel__h">Briefing</h2>
+          <div id="briefing" class="briefing"></div>
+          <h2 class="panel__h">Feed</h2>
+          <div id="feed" class="feed"></div>
+        </aside>
+      </main>
+
+      <footer class="dock">
+        <button id="mic-btn" class="dock__mic" type="button" aria-label="Toggle microphone">
+          <span class="dock__mic-ring"></span>
+          MIC
+        </button>
+        <form id="chat-form" class="dock__form">
+          <input
+            id="chat-input"
+            type="text"
+            autocomplete="off"
+            placeholder="Command Jarvis… (try: brief me, school tonight, swim)"
+          />
+          <button type="submit">Send</button>
+        </form>
+        <button id="brief-btn" class="dock__ghost" type="button">Brief me</button>
+        <button id="speak-toggle" class="dock__ghost" type="button" data-on="1">Voice on</button>
+      </footer>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
