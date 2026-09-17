@@ -395,45 +395,17 @@ function StartPage() {
                 <h3 className="look-kit-title">
                   {title}
                 </h3>
-                {why ? (
-                  <div className="why-band">
-                    <p className="why-paper">{why}</p>
-                  </div>
-                ) : null}
-                <div
-                  className={cn("kit-grid", slots.length === 5 && "kit-grid-32")}
-                  data-count={slots.length}
-                >
-                  {slots.length === 5 ? (
-                    <>
-                      <div className="kit-row kit-row-3">
-                        {slots.slice(0, 3).map((slot) => (
-                          <KitTile
-                            key={slot.label}
-                            garment={slot.garment}
-                            label={slot.label}
-                          />
-                        ))}
-                      </div>
-                      <div className="kit-row kit-row-2">
-                        {slots.slice(3).map((slot) => (
-                          <KitTile
-                            key={slot.label}
-                            garment={slot.garment}
-                            label={slot.label}
-                          />
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    slots.map((slot) => (
-                      <KitTile
-                        key={slot.label}
-                        garment={slot.garment}
-                        label={slot.label}
-                      />
-                    ))
-                  )}
+                <div className="why-band">
+                  {why ? <p className="why-paper">{why}</p> : null}
+                </div>
+                <div className="kit-grid" data-count={slots.length}>
+                  {slots.map((slot) => (
+                    <KitTile
+                      key={slot.label}
+                      garment={slot.garment}
+                      label={slot.label}
+                    />
+                  ))}
                 </div>
                 <div className="look-kit-actions">
                   <div className="look-kit-vote" role="group" aria-label="Private rating">
