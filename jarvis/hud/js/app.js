@@ -327,6 +327,11 @@ el.speakToggle.addEventListener("click", () => {
   if (!state.voiceOn) window.speechSynthesis?.cancel();
 });
 
+// Double-tap orb to re-run a short systems salute (movie flair)
+el.orb?.addEventListener("dblclick", () => {
+  handleCommand("brief me");
+});
+
 tickClock();
 setInterval(tickClock, 1000);
 window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
