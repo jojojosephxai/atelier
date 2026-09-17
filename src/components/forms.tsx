@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -6,7 +7,6 @@ import { Field, Input, NativeSelect, Textarea } from "@/components/ui/field";
 import { FASHION_PALETTE } from "@/lib/colors";
 import { cutBudget, cutGarment, cutProduct } from "@/lib/cutout";
 import { deletePhoto, putPhoto } from "@/lib/photo-db";
-import { uid } from "@/lib/utils";
 import type {
   Climate,
   Extra,
@@ -35,7 +35,43 @@ import {
   SLOT_LABELS,
   SUGGESTED_TAGS,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, uid } from "@/lib/utils";
+
+const PHOTO_SHEET_HELP =
+  "Photo on the floor. Background clears on-device and saves an isolated tile.";
+
+const LOOKS_NEED_FIELDS_HELP =
+  "Looks need category, formality, climate, and color family. Missing any of those keeps this in Closet only.";
+
+function CaretSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="text-xs font-medium tracking-wide text-muted">{title}</span>
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0 text-muted transition-transform duration-150",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open ? (
+        <div id={panelId} className="pb-1">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function ChipGroup<T extends string>({
   options,
@@ -50,9 +86,7 @@ function ChipGroup<T extends string>({
   onChange: (next: T | T[]) => void;
   multiple?: boolean;
 }) {
-  const selected = new Set(
-    Array.isArray(value) ? value : value ? [value] : [],
-  );
+  const selected = new Set(Array.isArray(value) ? value : value ? [value] : []);
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map((opt) => {
@@ -101,29 +135,18 @@ export function GarmentFormDialog({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [brand, setBrand] = useState(initial?.brand ?? "");
-  const [category, setCategory] = useState<GarmentCategory>(
-    initial?.category ?? "tops",
-  );
-  const [colorName, setColorName] = useState(
-    initial?.colorFamily || initial?.colorName || "",
-  );
+  const [category, setCategory] = useState<GarmentCategory>(initial?.category ?? "tops");
+  const [colorName, setColorName] = useState(initial?.colorFamily || initial?.colorName || "");
   const [hex, setHex] = useState(initial?.hex ?? "#d8d6cf");
   const [material, setMaterial] = useState(initial?.material ?? "");
-  const [formality, setFormality] = useState<Formality | "">(
-    initial?.formality ?? "",
-  );
-  const [seasons, setSeasons] = useState<Season[]>(
-    initial?.seasons ?? ["all"],
-  );
-  const [climate, setClimate] = useState<Climate[]>(
-    initial?.climate ?? [],
-  );
+  const [formality, setFormality] = useState<Formality | "">(initial?.formality ?? "");
+  const [seasons, setSeasons] = useState<Season[]>(initial?.seasons ?? ["all"]);
+  const [climate, setClimate] = useState<Climate[]>(initial?.climate ?? []);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
   const [imageBlobId, setImageBlobId] = useState(initial?.imageBlobId);
   const [preview, setPreview] = useState(initial?.imageSrc);
   const [imageSrc] = useState(initial?.imageSrc);
-  const [details, setDetails] = useState(Boolean(initial));
   const [cutting, setCutting] = useState(false);
   const [cutStatus, setCutStatus] = useState("");
   const photo = preview || imageSrc;
@@ -204,9 +227,7 @@ export function GarmentFormDialog({
     }
   }
 
-  const fourReady = Boolean(
-    name.trim() && category && formality && climate.length && colorName,
-  );
+  const fourReady = Boolean(name.trim() && category && formality && climate.length && colorName);
 
   return (
     <Dialog
@@ -218,18 +239,29 @@ export function GarmentFormDialog({
     >
       <DialogContent
         title={initial ? "Edit piece" : "Add a piece"}
-        description="Photo on the floor. On-device AI knocks the background and saves an isolated tile."
+        description={PHOTO_SHEET_HELP}
+        footer={
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" form="garment-piece-form" disabled={cutting || !fourReady}>
+              {cutting ? "Cutting…" : initial ? "Save changes" : "Add piece"}
+            </Button>
+            {onDelete ? (
+              <Button type="button" variant="danger" onClick={onDelete}>
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        }
       >
         <form
+          id="garment-piece-form"
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim() || !category) return;
             if (cutting) return;
             if (!fourReady) {
-              toast.error(
-                "Looks need category, formality, climate, and color family.",
-              );
+              toast.error("Looks need category, formality, climate, and color family.");
               return;
             }
             onSave({
@@ -256,11 +288,7 @@ export function GarmentFormDialog({
             <div className="flex items-center gap-3">
               <div className="outfit-studio h-28 w-[5.25rem] overflow-hidden rounded-lg">
                 {photo ? (
-                  <img
-                    src={photo}
-                    alt=""
-                    className="size-full object-contain object-center"
-                  />
+                  <img src={photo} alt="" className="size-full object-contain object-center" />
                 ) : null}
               </div>
               <div className="flex flex-col gap-2">
@@ -317,18 +345,16 @@ export function GarmentFormDialog({
               placeholder="Navy wool overcoat"
             />
           </Field>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium tracking-wide text-muted">
-              Category
-            </span>
+          <p className="text-xs text-muted">{LOOKS_NEED_FIELDS_HELP}</p>
+          <CaretSection title="Category">
             <ChipGroup
               options={GARMENT_CATEGORIES}
               labels={CATEGORY_LABELS}
               value={category}
               onChange={(v) => setCategory(v as GarmentCategory)}
             />
-          </div>
-          <Field label="Color family">
+          </CaretSection>
+          <CaretSection title="Color family">
             <div className="flex flex-wrap gap-1.5">
               {FASHION_PALETTE.map((c) => (
                 <button
@@ -349,22 +375,16 @@ export function GarmentFormDialog({
                 />
               ))}
             </div>
-          </Field>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium tracking-wide text-muted">
-              Formality
-            </span>
+          </CaretSection>
+          <CaretSection title="Formality">
             <ChipGroup
               options={FORMALITIES}
               labels={FORMALITY_LABELS}
               value={formality}
               onChange={(v) => setFormality(v as Formality)}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium tracking-wide text-muted">
-              Climate
-            </span>
+          </CaretSection>
+          <CaretSection title="Climate">
             <ChipGroup
               options={CLIMATES}
               labels={CLIMATE_LABELS}
@@ -372,15 +392,8 @@ export function GarmentFormDialog({
               multiple
               onChange={(v) => setClimate(v as Climate[])}
             />
-          </div>
-          <p className="text-xs text-muted">
-            Looks need category, formality, climate, and color family. Missing
-            any of those keeps this in Closet only.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium tracking-wide text-muted">
-              Collections
-            </span>
+          </CaretSection>
+          <CaretSection title="Collections">
             <div className="flex flex-wrap gap-1.5">
               {SUGGESTED_TAGS.map((tag) => {
                 const on = tags.includes(tag);
@@ -389,9 +402,7 @@ export function GarmentFormDialog({
                     key={tag}
                     type="button"
                     onClick={() =>
-                      setTags((prev) =>
-                        on ? prev.filter((t) => t !== tag) : [...prev, tag],
-                      )
+                      setTags((prev) => (on ? prev.filter((t) => t !== tag) : [...prev, tag]))
                     }
                     className={cn(
                       "h-9 rounded-full px-3 text-xs tracking-wide",
@@ -405,16 +416,9 @@ export function GarmentFormDialog({
                 );
               })}
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setDetails((v) => !v)}
-            className="h-11 text-left text-sm text-muted"
-          >
-            {details ? "Hide details" : "More details"}
-          </button>
-          {details ? (
-            <>
+          </CaretSection>
+          <CaretSection title="More details">
+            <div className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Brand">
                   <Input
@@ -432,9 +436,7 @@ export function GarmentFormDialog({
                 </Field>
               </div>
               <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium tracking-wide text-muted">
-                  Seasons
-                </span>
+                <span className="text-xs font-medium tracking-wide text-muted">Seasons</span>
                 <ChipGroup
                   options={SEASONS}
                   labels={SEASON_LABELS}
@@ -450,18 +452,8 @@ export function GarmentFormDialog({
                   placeholder="Fit, pairing, care"
                 />
               </Field>
-            </>
-          ) : null}
-          <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="submit" disabled={cutting || !fourReady}>
-              {cutting ? "Cutting…" : initial ? "Save changes" : "Add piece"}
-            </Button>
-            {onDelete ? (
-              <Button type="button" variant="danger" onClick={onDelete}>
-                Remove
-              </Button>
-            ) : null}
-          </div>
+            </div>
+          </CaretSection>
         </form>
       </DialogContent>
     </Dialog>
@@ -593,7 +585,7 @@ export function ExtraFormDialog({
     >
       <DialogContent
         title={initial ? "Edit piece" : "Add a piece"}
-        description="Photo on the floor. On-device AI knocks the background and saves an isolated tile."
+        description={PHOTO_SHEET_HELP}
       >
         <form
           className="flex flex-col gap-4"
