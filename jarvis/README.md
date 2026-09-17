@@ -33,12 +33,14 @@ Phone: Cursor iOS / cursor.com/agents       ← same memory; HUD is desktop/brow
 ## First thing to run (right now)
 
 ```bash
+npm install
 npm run jarvis
 ```
 
-Open **http://localhost:8787** — watch the boot sequence, then try **Brief me** or the mic.
+Open **http://localhost:8787** — watch the boot sequence, then try **Brief me**, **school tonight**, **swim**, or the mic / Space.
 
-Also add the User Rule from [CURSOR-WIRING.md](./CURSOR-WIRING.md) in Cursor → Customize → Rules.
+Optional desktop package: [INSTALL-OPENDEX.md](./INSTALL-OPENDEX.md)  
+Also add the User Rule from [CURSOR-WIRING.md](./CURSOR-WIRING.md) (or rely on `.cursor/rules/jarvis-joseph.mdc` already in this repo).
 
 ## Inspiration reels
 

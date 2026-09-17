@@ -85,6 +85,17 @@ body {
   display: grid;
   place-items: center;
   opacity: 0.9;
+  animation: reactor-breathe 3.5s ease-in-out infinite;
+}
+
+@keyframes reactor-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 12px rgba(92, 225, 255, 0.25));
+  }
+  50% {
+    filter: drop-shadow(0 0 28px rgba(92, 225, 255, 0.55));
+  }
 }
 
 .boot__ring {
@@ -196,6 +207,20 @@ body {
   transform: translateY(6px);
   animation: log-in 0.35s ease forwards;
   margin: 0.25rem 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 2px solid transparent;
+}
+
+.boot__log li.is-typing {
+  animation: log-in 0.2s ease forwards, caret-blink 0.7s step-end infinite;
+  border-right-color: var(--cyan);
+}
+
+@keyframes caret-blink {
+  50% {
+    border-right-color: transparent;
+  }
 }
 
 .boot__log li::before {
@@ -754,12 +779,20 @@ body {
   padding: 0.7rem 0.9rem;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .dock__form button:hover,
 .dock__ghost:hover {
   border-color: var(--cyan);
   background: rgba(92, 225, 255, 0.16);
+  box-shadow: 0 0 16px rgba(92, 225, 255, 0.2);
+}
+
+.dock__form button:active,
+.dock__ghost:active,
+.dock__mic:active {
+  transform: scale(0.98);
 }
 
 @media (max-width: 900px) {

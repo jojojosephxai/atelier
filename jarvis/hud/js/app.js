@@ -6,10 +6,12 @@ import { askBridge, bridgeHealth } from "./bridge-client.js";
 const BOOT_LINES = [
   "Initializing personal instance…",
   "Loading Joseph profile kernel…",
-  "Calibrating Conestoga + UMLY schedules…",
+  "Mounting Conestoga schedule bus…",
+  "Syncing UMLY AG1B grid…",
   "Voice stack: Web Speech API",
   "Policy: no Grok Bot · no new subscriptions",
   "Arc reactor simulation online",
+  "Briefing engine: armed",
   "Handshake complete. Welcome back.",
 ];
 
@@ -31,6 +33,7 @@ const el = {
   statePill: document.getElementById("state-pill"),
   orb: document.getElementById("orb"),
   briefing: document.getElementById("briefing"),
+  overnight: document.getElementById("overnight"),
   tonight: document.getElementById("tonight-list"),
   feed: document.getElementById("feed"),
   transcript: document.getElementById("transcript"),
@@ -94,6 +97,17 @@ function addFeed(role, text) {
 
 function renderBriefing() {
   const b = buildBriefing();
+  if (el.overnight) {
+    el.overnight.innerHTML = `
+      <p><strong>While you were offline</strong></p>
+      <ul>
+        <li>Profile kernel loaded — Joseph context ready.</li>
+        <li>No inbox automation running yet (Cursor Automations = phase 2).</li>
+        <li>School + swim calendars active for today.</li>
+        <li>Standing by for triage — say what’s due.</li>
+      </ul>
+    `;
+  }
   el.briefing.innerHTML = `
     <p><strong>${b.title}</strong></p>
     <ul>${b.lines.map((l) => `<li>${l}</li>`).join("")}</ul>
@@ -221,14 +235,19 @@ function runBoot() {
     if (state.bootDone) return;
     if (i < BOOT_LINES.length) {
       const li = document.createElement("li");
+      li.classList.add("is-typing");
       li.textContent = BOOT_LINES[i];
       el.bootLog.appendChild(li);
+      [...el.bootLog.querySelectorAll("li")].forEach((n) => {
+        if (n !== li) n.classList.remove("is-typing");
+      });
       i += 1;
       const pct = Math.round((i / BOOT_LINES.length) * 100);
       el.bootBar.style.width = `${pct}%`;
       el.bootPct.textContent = `${pct}%`;
-      setTimeout(step, 420);
+      setTimeout(step, 520);
     } else {
+      el.bootLog.querySelectorAll("li").forEach((n) => n.classList.remove("is-typing"));
       setTimeout(enterHud, 500);
     }
   };
