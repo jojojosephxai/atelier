@@ -53,7 +53,7 @@ function CaretSection({ title, children }: { title: string; children: ReactNode 
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+        className="flex h-11 min-h-11 w-full items-center justify-between gap-3 text-left"
       >
         <span className="text-xs font-medium tracking-wide text-muted">{title}</span>
         <ChevronDown
