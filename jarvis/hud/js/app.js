@@ -37,6 +37,7 @@ const el = {
   tonight: document.getElementById("tonight-list"),
   feed: document.getElementById("feed"),
   transcript: document.getElementById("transcript"),
+  wave: document.getElementById("wave"),
   mic: document.getElementById("mic-btn"),
   form: document.getElementById("chat-form"),
   input: document.getElementById("chat-input"),
@@ -59,6 +60,7 @@ function setState(mode) {
   el.statePill.textContent = label;
   el.orb.classList.toggle("is-listen", mode === "listen");
   el.orb.classList.toggle("is-speak", mode === "speak");
+  el.wave?.classList.toggle("is-on", mode === "listen" || mode === "speak");
 }
 
 function tickClock() {
