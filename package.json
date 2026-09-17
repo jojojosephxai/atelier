@@ -21,7 +21,8 @@
     "format": "prettier --write .",
     "jarvis": "vite --config jarvis/hud/vite.config.ts --host 0.0.0.0 --port 8787",
     "jarvis:open": "vite --config jarvis/hud/vite.config.ts --host 127.0.0.1 --port 8787 --open",
-    "jarvis:bridge": "node jarvis/bridge/server.mjs"
+    "jarvis:bridge": "node jarvis/bridge/server.mjs",
+    "jarvis:voice": "node jarvis/scripts/serve-voice-previews.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

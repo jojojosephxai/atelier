@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Cinematic boot / startup | Done | `jarvis/hud` reactor + log + zoom handoff |
 | Cyan HUD / orb | Done | Main stage after boot |
-| Voice talk / listen | Done | Mic + Space + TTS |
+| Voice talk / listen | Done | Mic + Space + edge-tts Ryan (bridge) / browser fallback |
 | Knows Joseph | Done | Merged profile → `profile-data.js` + `JOSEPH.profile.md` |
 | Morning “everything handled” vibe | Partial | Overnight panel (honest: no real email automation yet) |
 | Coding hands like Cursor behind face | Partial | Local brain now; `jarvis/bridge` stub for Cursor SDK |
@@ -18,6 +18,14 @@
 ```bash
 npm run jarvis
 ```
+
+Hear the free Jarvis voice samples (no coding):
+
+```bash
+npm run jarvis:voice
+```
+
+Or open `jarvis/voice-previews/index.html` / the MP3s in that folder. For movie voice in the HUD, also run `npm run jarvis:bridge` in a second terminal (needs `pip3 install edge-tts` once).
 
 ## Honest gap vs Instagram
 

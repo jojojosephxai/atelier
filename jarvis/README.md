@@ -39,6 +39,14 @@ npm run jarvis
 
 Open **http://localhost:8787** — watch the boot sequence, then try **Brief me**, **school tonight**, **swim**, or the mic / Space.
 
+### Check the free Jarvis voice (edge-tts)
+
+```bash
+npm run jarvis:voice
+```
+
+Opens a page with Play buttons for **Ryan** / **Thomas**. Details: [`voice-previews/README.md`](./voice-previews/README.md). No ElevenLabs payment.
+
 Optional desktop package: [INSTALL-OPENDEX.md](./INSTALL-OPENDEX.md)  
 Also add the User Rule from [CURSOR-WIRING.md](./CURSOR-WIRING.md) (or rely on `.cursor/rules/jarvis-joseph.mdc` already in this repo).
 

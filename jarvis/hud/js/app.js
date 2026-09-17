@@ -1,14 +1,14 @@
 import { PROFILE, buildBriefing, greetingLine } from "./profile-data.js";
 import { startStarfield } from "./stars.js";
 import { playBootChirp, playAckBlip } from "./sfx.js";
-import { askBridge, bridgeHealth } from "./bridge-client.js";
+import { askBridge, bridgeHealth, speakViaBridge, stopBridgeSpeech } from "./bridge-client.js";
 
 const BOOT_LINES = [
   "Initializing personal instance…",
   "Loading Joseph profile kernel…",
   "Mounting Conestoga schedule bus…",
   "Syncing UMLY AG1B grid…",
-  "Voice stack: Web Speech API",
+  "Voice stack: edge-tts Ryan (bridge) · browser fallback",
   "Policy: no Grok Bot · no new subscriptions",
   "Arc reactor simulation online",
   "Briefing engine: armed",
@@ -72,8 +72,11 @@ function tickClock() {
   });
 }
 
-function speak(text) {
-  if (!state.voiceOn || !window.speechSynthesis) return;
+function speakBrowser(text) {
+  if (!window.speechSynthesis) {
+    setState("idle");
+    return;
+  }
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 1.02;
@@ -84,9 +87,22 @@ function speak(text) {
     voices.find((v) => /en(-|_)GB/i.test(v.lang)) ||
     voices.find((v) => /en(-|_)US/i.test(v.lang));
   if (preferred) u.voice = preferred;
-  setState("speak");
   u.onend = () => setState("idle");
+  u.onerror = () => setState("idle");
   window.speechSynthesis.speak(u);
+}
+
+async function speak(text) {
+  if (!state.voiceOn) return;
+  stopBridgeSpeech();
+  window.speechSynthesis?.cancel();
+  setState("speak");
+  const usedBridge = await speakViaBridge(text);
+  if (usedBridge) {
+    setState("idle");
+    return;
+  }
+  speakBrowser(text);
 }
 
 function addFeed(role, text) {
@@ -324,7 +340,10 @@ el.speakToggle.addEventListener("click", () => {
   state.voiceOn = !state.voiceOn;
   el.speakToggle.dataset.on = state.voiceOn ? "1" : "0";
   el.speakToggle.textContent = state.voiceOn ? "Voice on" : "Voice off";
-  if (!state.voiceOn) window.speechSynthesis?.cancel();
+  if (!state.voiceOn) {
+    stopBridgeSpeech();
+    window.speechSynthesis?.cancel();
+  }
 });
 
 // Double-tap orb to re-run a short systems salute (movie flair)
