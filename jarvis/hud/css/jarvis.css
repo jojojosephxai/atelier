@@ -386,6 +386,18 @@ body {
   letter-spacing: 0.22em;
   font-size: 0.95rem;
   color: var(--cyan);
+  text-shadow: 0 0 18px var(--cyan-glow);
+  animation: title-glow 3.2s ease-in-out infinite;
+}
+
+@keyframes title-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 12px var(--cyan-glow);
+  }
+  50% {
+    text-shadow: 0 0 26px rgba(92, 225, 255, 0.75);
+  }
 }
 
 .topbar__sub {
