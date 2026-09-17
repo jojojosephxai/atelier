@@ -18,7 +18,10 @@
     "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "node --test \"scripts/**/*.test.mjs\" && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/describe-look.test.ts src/lib/engine.test.ts src/lib/rich-why.test.ts src/lib/cutout.test.ts",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "jarvis": "vite --config jarvis/hud/vite.config.ts --host 0.0.0.0 --port 8787",
+    "jarvis:open": "vite --config jarvis/hud/vite.config.ts --host 127.0.0.1 --port 8787 --open",
+    "jarvis:bridge": "node jarvis/bridge/server.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

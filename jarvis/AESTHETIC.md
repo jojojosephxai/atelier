@@ -13,14 +13,16 @@ These are the **must-feel** requirements. Captions from Instagram do not include
 
 ## Movie checklist (day one must pass)
 
-- [ ] **Startup / boot sequence** — visible “powering up” (rings, scan lines, or Earth→HUD), not an instant chat box
-- [ ] **HUD chrome** — dark background, cyan/blue accent glow, circular or arc motifs
-- [ ] **Wake** — hotkey and/or wake word (“Hey Jarvis” or clap)
-- [ ] **Voice in + voice out** — talk; it talks back
-- [ ] **State colors** — idle / listening / thinking / speaking (or error)
-- [ ] **Personalized greeting** — uses Joseph’s name
-- [ ] **Morning briefing script** — optional first routine matching reel 1
-- [ ] **No Grok Bot** in the critical path
+- [x] **Startup / boot sequence** — `jarvis/hud` reactor + system log (`npm run jarvis`)
+- [x] **HUD chrome** — dark + cyan glow, clipped panels, orb rings
+- [x] **Wake** — mic button + Space hotkey (wake-word phrase handled in typed/spoken commands)
+- [x] **Voice in + voice out** — Web Speech STT + TTS
+- [x] **State colors** — idle / listening / thinking / speaking
+- [x] **Personalized greeting** — Joseph + Conestoga / UMLY briefing
+- [x] **Morning briefing script** — Brief me + day-aware swim/school tips
+- [x] **No Grok Bot** in the critical path
+- [ ] **Cursor live brain** — bridge stub in `jarvis/bridge/` (phase 2)
+- [ ] **OpenDex desktop package** — optional alternate face (see INSTALL-OPENDEX.md)
 
 ## Explicit non-goals (day one)
 
