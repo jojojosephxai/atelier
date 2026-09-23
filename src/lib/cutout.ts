@@ -30,6 +30,8 @@ type CutProfile = {
   alphaSolid: number;
   /** Erode opaque alpha by this many px before rebuild (kills fringe). */
   edgeTrim: number;
+  /** Peel a dark rim that is darker than the cloth behind it (olive hems). */
+  peelDark: boolean;
   stripHanger: boolean;
 };
 
@@ -40,6 +42,7 @@ const PROFILES: Record<CutMode, CutProfile> = {
     alphaKill: 96,
     alphaSolid: 208,
     edgeTrim: 1,
+    peelDark: true,
     stripHanger: true,
   },
   product: {
@@ -49,6 +52,7 @@ const PROFILES: Record<CutMode, CutProfile> = {
     alphaKill: 96,
     alphaSolid: 208,
     edgeTrim: 0,
+    peelDark: false,
     stripHanger: false,
   },
 };
@@ -392,8 +396,140 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
     }
   }
 
-  // 4) Color decontamination on the remaining edge ring.
+  // 4) Olive / soft hems keep a dark band that binarize locks in. Peel it.
+  if (profile.peelDark) peelDarkRim(img);
+
+  // 5) Color decontamination on the remaining edge ring.
   defringeRgb(img);
+}
+
+/**
+ * Drop a near-black hem fringe that is darker than the cloth inside.
+ * The olive gym-short halo is a band of almost-black pixels, not a 1px
+ * edge, so each pass clears a band. Only pixels darker than `ceil` can
+ * go — a shaded khaki or white edge stays. Black clothes match their
+ * own interior, so the gap check leaves them.
+ */
+function peelDarkRim(img: ImageData): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const n = w * h;
+  if (w < 48 || h < 48) return;
+
+  const lum = new Float32Array(n);
+  const opaque = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    lum[i] = 0.2126 * px[o]! + 0.7152 * px[o + 1]! + 0.0722 * px[o + 2]!;
+    opaque[i] = px[o + 3]! >= 128 ? 1 : 0;
+  }
+
+  const erodeN = 16;
+  const band = 8;
+  const passes = 4;
+  const gap = 12;
+  const rad = 16;
+  const ceil = 40;
+  const stride = w + 1;
+  const bufA = new Uint8Array(n);
+  const bufB = new Uint8Array(n);
+  const deep = new Uint8Array(n);
+  const iL = new Float64Array(stride * (h + 1));
+  const iM = new Float64Array(stride * (h + 1));
+
+  for (let pass = 0; pass < passes; pass++) {
+    const core = erodeMask(opaque, erodeN, w, h, bufA, bufB);
+    deep.set(core);
+    let deepCount = 0;
+    for (let i = 0; i < n; i++) deepCount += deep[i]!;
+    if (deepCount < 200) break;
+
+    const inner = erodeMask(opaque, band, w, h, bufA, bufB);
+
+    iL.fill(0);
+    iM.fill(0);
+    for (let y = 0; y < h; y++) {
+      let runL = 0;
+      let runM = 0;
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        const m = deep[row + x]!;
+        runL += lum[row + x]! * m;
+        runM += m;
+        const p = (y + 1) * stride + (x + 1);
+        const above = y * stride + (x + 1);
+        iL[p] = iL[above]! + runL;
+        iM[p] = iM[above]! + runM;
+      }
+    }
+
+    let killed = 0;
+    const kill = new Uint8Array(n);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        if (!opaque[i] || inner[i]) continue;
+        const pix = lum[i]!;
+        if (pix >= ceil) continue;
+        const y0 = Math.max(0, y - rad);
+        const y1 = Math.min(h, y + rad + 1);
+        const x0 = Math.max(0, x - rad);
+        const x1 = Math.min(w, x + rad + 1);
+        const sM =
+          iM[y1 * stride + x1]! -
+          iM[y0 * stride + x1]! -
+          iM[y1 * stride + x0]! +
+          iM[y0 * stride + x0]!;
+        if (sM < 8) continue;
+        const sL =
+          iL[y1 * stride + x1]! -
+          iL[y0 * stride + x1]! -
+          iL[y1 * stride + x0]! +
+          iL[y0 * stride + x0]!;
+        if (pix + gap < sL / sM) {
+          kill[i] = 1;
+          killed++;
+        }
+      }
+    }
+    if (killed < 24) break;
+    for (let i = 0; i < n; i++) {
+      if (!kill[i]) continue;
+      px[i * 4 + 3] = 0;
+      opaque[i] = 0;
+    }
+  }
+}
+
+/** Copy of `src` eroded `times` steps. Does not mutate `src`. */
+function erodeMask(
+  src: Uint8Array,
+  times: number,
+  w: number,
+  h: number,
+  bufA: Uint8Array,
+  bufB: Uint8Array,
+): Uint8Array {
+  bufA.set(src);
+  let cur = bufA;
+  let nxt = bufB;
+  for (let e = 0; e < times; e++) {
+    nxt.fill(0);
+    for (let y = 1; y < h - 1; y++) {
+      const row = y * w;
+      for (let x = 1; x < w - 1; x++) {
+        const i = row + x;
+        if (cur[i] && cur[i - 1] && cur[i + 1] && cur[i - w] && cur[i + w]) {
+          nxt[i] = 1;
+        }
+      }
+    }
+    const swap = cur;
+    cur = nxt;
+    nxt = swap;
+  }
+  return cur;
 }
 
 function defringeRgb(img: ImageData): void {
@@ -848,6 +984,7 @@ export function knockBackground(img: HTMLImageElement, maxEdge = 1400): string {
     alphaKill: 96,
     alphaSolid: 208,
     edgeTrim: 1,
+    peelDark: true,
     stripHanger: false,
   });
   ctx.putImageData(data, 0, 0);

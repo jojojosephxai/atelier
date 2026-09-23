@@ -43,6 +43,7 @@ describe("refineMatte", () => {
       alphaKill: 72,
       alphaSolid: 220,
       edgeTrim: 1,
+      peelDark: false,
       stripHanger: false,
     });
 
@@ -73,6 +74,7 @@ describe("refineMatte", () => {
       alphaKill: 72,
       alphaSolid: 220,
       edgeTrim: 1,
+      peelDark: false,
       stripHanger: false,
     });
 
@@ -99,6 +101,7 @@ describe("refineMatte", () => {
       alphaKill: 96,
       alphaSolid: 208,
       edgeTrim: 0,
+      peelDark: false,
       stripHanger: false,
     });
 
@@ -134,6 +137,7 @@ describe("refineMatte", () => {
       alphaKill: 96,
       alphaSolid: 208,
       edgeTrim: 1,
+      peelDark: false,
       stripHanger: false,
     });
 
@@ -177,6 +181,7 @@ describe("refineMatte", () => {
       alphaKill: 96,
       alphaSolid: 208,
       edgeTrim: 0,
+      peelDark: false,
       stripHanger: false,
     });
 
@@ -186,6 +191,107 @@ describe("refineMatte", () => {
     assert.ok(img.data[label + 1]! > 230);
     const halo = (1 * 16 + 4) * 4;
     assert.equal(img.data[halo + 3], 0);
+  });
+});
+
+describe("peelDarkRim", () => {
+  it("strips a dark hem fringe and keeps the olive cloth", () => {
+    const img = makeImageData(120, 90, (x, y, px, i) => {
+      const cloth = x >= 12 && x <= 107 && y >= 12 && y <= 58;
+      const rim = x >= 12 && x <= 107 && y >= 59 && y <= 70;
+      if (cloth) {
+        px[i] = 92;
+        px[i + 1] = 104;
+        px[i + 2] = 62;
+        px[i + 3] = 255;
+        return;
+      }
+      if (rim) {
+        px[i] = 18;
+        px[i + 1] = 16;
+        px[i + 2] = 8;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i + 3] = 0;
+    });
+
+    refineMatte(img, {
+      maxEdge: 1280,
+      alphaKill: 96,
+      alphaSolid: 208,
+      edgeTrim: 1,
+      peelDark: true,
+      stripHanger: false,
+    });
+
+    const cloth = (30 * 120 + 60) * 4;
+    assert.equal(img.data[cloth + 3], 255);
+    assert.ok(img.data[cloth]! > 70);
+    const rim = (64 * 120 + 60) * 4;
+    assert.equal(img.data[rim + 3], 0);
+    // The fringe is a band, not one pixel. The row against the cloth goes too.
+    const innerRim = (59 * 120 + 60) * 4;
+    assert.equal(img.data[innerRim + 3], 0);
+  });
+
+  it("keeps a shaded khaki edge that is not a black fringe", () => {
+    const img = makeImageData(140, 110, (x, y, px, i) => {
+      const inside = x >= 10 && x <= 129 && y >= 10 && y <= 99;
+      const shade = inside && (x < 16 || x > 123 || y < 16 || y > 93);
+      if (!inside) {
+        px[i + 3] = 0;
+        return;
+      }
+      if (shade) {
+        px[i] = 150;
+        px[i + 1] = 132;
+        px[i + 2] = 90;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i] = 186;
+      px[i + 1] = 164;
+      px[i + 2] = 112;
+      px[i + 3] = 255;
+    });
+    refineMatte(img, {
+      maxEdge: 1280,
+      alphaKill: 96,
+      alphaSolid: 208,
+      edgeTrim: 1,
+      peelDark: true,
+      stripHanger: false,
+    });
+    const shade = (14 * 140 + 70) * 4;
+    assert.equal(img.data[shade + 3], 255);
+    assert.ok(img.data[shade]! > 120);
+  });
+
+  it("does not peel a black garment down to nothing", () => {
+    const img = makeImageData(100, 80, (x, y, px, i) => {
+      if (x >= 8 && x <= 91 && y >= 8 && y <= 71) {
+        px[i] = 28;
+        px[i + 1] = 28;
+        px[i + 2] = 30;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i + 3] = 0;
+    });
+    refineMatte(img, {
+      maxEdge: 1280,
+      alphaKill: 96,
+      alphaSolid: 208,
+      edgeTrim: 1,
+      peelDark: true,
+      stripHanger: false,
+    });
+    let solid = 0;
+    for (let i = 3; i < img.data.length; i += 4) {
+      if (img.data[i] === 255) solid++;
+    }
+    assert.ok(solid > 70 * 50, `black garment shrank to ${solid}`);
   });
 });
 
