@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { FittedPiece } from "@/components/fitted-piece";
 import { NativeSelect } from "@/components/ui/field";
 import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy, boardY } from "@/lib/board-set";
-import { compressImage } from "@/lib/image";
+import { exportLookKitGrid, type KitExportResult } from "@/lib/kit-grid-export";
 import { whyForSet, whyPrimaryKey } from "@/lib/why-compose";
 import { comboKey, lookCoreKey } from "@/lib/look";
 import {
@@ -112,6 +112,23 @@ function KitTile({ garment, label }: { garment: Garment; label: string }) {
   );
 }
 
+function toastKitExport(result: KitExportResult) {
+  switch (result) {
+    case "downloaded":
+      toast("Kit grid saved");
+      break;
+    case "shared":
+      toast("Kit grid shared");
+      break;
+    case "cancelled":
+      break;
+    default: {
+      const exhaustive: never = result;
+      return exhaustive;
+    }
+  }
+}
+
 function kitSlots(pieces: Garment[], routine: RoutineId) {
   const layer = pieces.find(isGymLayer);
   const outer = pieces.find((g) => g.category === "outerwear");
@@ -201,6 +218,7 @@ function StartPage() {
   const [shuffleAvoid, setShuffleAvoid] = useState<string[]>([]);
   const [blockKeys, setBlockKeys] = useState<string[]>([]);
   const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
+  const exportingKits = useRef(new Set<string>());
   const climate = climateOverride ?? storedClimate;
   const season = currentSeason();
   const scene = ROUTINES.find((r) => r.id === routine)!;
@@ -348,15 +366,16 @@ function StartPage() {
     setBlockKeys((keys) => [...keys, core, combo].filter(Boolean));
   }
 
-  async function onAddPhoto(file: File | undefined, pieces: Garment[], look: SuggestedLook) {
-    if (!file) return;
+  async function onExportKit(grid: HTMLElement, name: string, key: string) {
+    if (exportingKits.current.has(key)) return;
+    exportingKits.current.add(key);
     try {
-      const data = await compressImage(file);
-      const id = ensureSaved(pieces, look);
-      updateLook(id, { photoDataUrl: data });
-      toast("Photo added");
+      const result = await exportLookKitGrid(grid, name);
+      toastKitExport(result);
     } catch {
-      toast("Could not read that photo");
+      toast("Could not export this kit");
+    } finally {
+      exportingKits.current.delete(key);
     }
   }
 
@@ -567,21 +586,23 @@ function StartPage() {
                       ))}
                     </NativeSelect>
                   </div>
-                  <label
-                    aria-label="Add photo"
+                  <button
+                    type="button"
+                    aria-label="Export kit grid"
                     className="look-kit-icon look-kit-photo"
+                    onClick={(event) => {
+                      const grid = event.currentTarget
+                        .closest(".look-kit")
+                        ?.querySelector(".kit-grid");
+                      if (!(grid instanceof HTMLElement)) {
+                        toast("Could not export this kit");
+                        return;
+                      }
+                      void onExportKit(grid, title, key);
+                    }}
                   >
                     <Camera className="size-4" />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(e) => {
-                        void onAddPhoto(e.target.files?.[0], pieces, look);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                  </button>
                 </div>
                 <button
                   type="button"
