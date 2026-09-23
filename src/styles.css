@@ -581,6 +581,10 @@ html[data-theme="dark"] {
 
   .look-kit-actions .look-kit-photo {
     cursor: pointer;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
   }
 
   .look-kit-actions .look-kit-text {
