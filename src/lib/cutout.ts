@@ -32,6 +32,14 @@ type CutProfile = {
   edgeTrim: number;
   /** Peel a dark rim that is darker than the cloth behind it (olive hems). */
   peelDark: boolean;
+  /**
+   * Peel near-white pixels that touch transparency.
+   * Glass bottles keep an opaque white rim after the soft-alpha kill;
+   * matte jars do not, so this stops at pigment. 0 skips (white clothes).
+   */
+  haloTrim: number;
+  /** Borrow edge color from pigment, not from white glass highlights. */
+  skipPaleDonors: boolean;
   stripHanger: boolean;
 };
 
@@ -43,6 +51,8 @@ const PROFILES: Record<CutMode, CutProfile> = {
     alphaSolid: 208,
     edgeTrim: 1,
     peelDark: true,
+    haloTrim: 0,
+    skipPaleDonors: false,
     stripHanger: true,
   },
   product: {
@@ -53,6 +63,9 @@ const PROFILES: Record<CutMode, CutProfile> = {
     alphaSolid: 208,
     edgeTrim: 0,
     peelDark: false,
+    // Peel the opaque white rim on glass. Matte jars stop at pigment.
+    haloTrim: 6,
+    skipPaleDonors: true,
     stripHanger: false,
   },
 };
@@ -367,7 +380,11 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
     px[i] = a < profile.alphaKill ? 0 : 255;
   }
 
-  // 3) Morphological edge trim — drop pixels that sit on the transparent border.
+  // 3) Opaque white rim on glass. Stops when the pixel is real pigment.
+  //    Before the general erode so we do not eat the dark glass edge.
+  if (profile.haloTrim > 0) stripWhiteHalo(img, profile.haloTrim);
+
+  // 4) Morphological edge trim — drop pixels that sit on the transparent border.
   if (profile.edgeTrim > 0) {
     const alpha = new Uint8Array(n);
     for (let i = 0; i < n; i++) alpha[i] = px[i * 4 + 3] >= 128 ? 1 : 0;
@@ -396,11 +413,53 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
     }
   }
 
-  // 4) Olive / soft hems keep a dark band that binarize locks in. Peel it.
+  // 5) Olive / soft hems keep a dark band that binarize locks in. Peel it.
   if (profile.peelDark) peelDarkRim(img);
 
-  // 5) Color decontamination on the remaining edge ring.
-  defringeRgb(img);
+  // 6) Color decontamination on the remaining edge ring.
+  defringeRgb(img, profile.skipPaleDonors);
+}
+
+function isPale(r: number, g: number, b: number): boolean {
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const sat = mx === 0 ? 0 : (mx - mn) / mx;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum > 0.74 && sat < 0.16;
+}
+
+/** Drop a near-white fringe that survived as solid alpha. Interior labels stay. */
+function stripWhiteHalo(img: ImageData, passes: number): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const n = w * h;
+  for (let pass = 0; pass < passes; pass++) {
+    const kill = new Uint8Array(n);
+    let any = false;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (px[i + 3]! < 128) continue;
+        const edge =
+          x === 0 ||
+          y === 0 ||
+          x === w - 1 ||
+          y === h - 1 ||
+          px[i - 4 + 3]! < 18 ||
+          px[i + 4 + 3]! < 18 ||
+          px[i - w * 4 + 3]! < 18 ||
+          px[i + w * 4 + 3]! < 18;
+        if (!edge || !isPale(px[i]!, px[i + 1]!, px[i + 2]!)) continue;
+        kill[y * w + x] = 1;
+        any = true;
+      }
+    }
+    if (!any) break;
+    for (let i = 0; i < n; i++) {
+      if (kill[i]) px[i * 4 + 3] = 0;
+    }
+  }
 }
 
 /**
@@ -532,7 +591,7 @@ function erodeMask(
   return cur;
 }
 
-function defringeRgb(img: ImageData): void {
+function defringeRgb(img: ImageData, skipPaleDonors: boolean): void {
   const w = img.width;
   const h = img.height;
   const px = img.data;
@@ -578,6 +637,9 @@ function defringeRgb(img: ImageData): void {
             }
           }
           if (neighborClear) continue;
+          if (skipPaleDonors && isPale(src[j]!, src[j + 1]!, src[j + 2]!)) {
+            continue;
+          }
           rs += src[j];
           gs += src[j + 1];
           bs += src[j + 2];
@@ -985,6 +1047,8 @@ export function knockBackground(img: HTMLImageElement, maxEdge = 1400): string {
     alphaSolid: 208,
     edgeTrim: 1,
     peelDark: true,
+    haloTrim: 0,
+    skipPaleDonors: false,
     stripHanger: false,
   });
   ctx.putImageData(data, 0, 0);

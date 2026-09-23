@@ -47,7 +47,7 @@ export function usePieceSrc(item: {
   return src;
 }
 
-const v = "v55";
+const v = "v57";
 
 export const SAMPLE_IMAGES: Record<string, string> = {
   g_navy_coat: `/sample/cut/navy-coat.webp?${v}`,
@@ -102,8 +102,8 @@ export const SAMPLE_IMAGES: Record<string, string> = {
   g_denim_jacket: `/sample/cut/denim-jacket.webp?${v}`,
   g_rain_shell: `/sample/cut/rain-shell.webp?${v}`,
   e_bergamot: `/sample/cut/colonia.webp?${v}`,
-  e_vetiver: `/sample/cut/vetiver.webp?${v}`,
-  e_tonka: `/sample/cut/tonka-ambre.webp?${v}`,
+  e_vetiver: `/sample/cut/grey-flannel.webp?${v}`,
+  e_tonka: `/sample/cut/tonka.webp?${v}`,
   e_cleanser: `/sample/cut/cerave-cleanser.webp?${v}`,
   e_vitc: `/sample/cut/skinceuticals-ce.webp?${v}`,
   e_moist: `/sample/cut/lrp-moist.webp?${v}`,
@@ -111,5 +111,5 @@ export const SAMPLE_IMAGES: Record<string, string> = {
   e_retinol: `/sample/cut/gg-retinol.webp?${v}`,
   e_night: `/sample/cut/weleda-night.webp?${v}`,
   e_clay: `/sample/cut/hanz-clay.webp?${v}`,
-  e_balm: `/sample/cut/lelabo-beard.webp?${v}`,
+  e_balm: `/sample/cut/santal-33.webp?${v}`,
 };
