@@ -466,8 +466,8 @@ function stripWhiteHalo(img: ImageData, passes: number): void {
  * Drop a near-black hem fringe that is darker than the cloth inside.
  * The olive gym-short halo is a band of almost-black pixels, not a 1px
  * edge, so each pass clears a band. Only pixels darker than `ceil` can
- * go — a shaded khaki or white edge stays. Black clothes match their
- * own interior, so the gap check leaves them.
+ * go, and only when the cloth behind them is lighter than dark denim.
+ * Shaded khaki, black clothes, and indigo seams stay.
  */
 function peelDarkRim(img: ImageData): void {
   const w = img.width;
@@ -490,6 +490,11 @@ function peelDarkRim(img: ImageData): void {
   const gap = 12;
   const rad = 16;
   const ceil = 40;
+  // Denim sits near 36. Lighter waistband threads were lifting the local
+  // average to about 62, so belt-loop and seam shadows got peeled and the
+  // studio plate showed through as white speckles and a filled waist.
+  // Olive cloth is about 68, so only peel when the cloth is at least this.
+  const clothMin = 64;
   const stride = w + 1;
   const bufA = new Uint8Array(n);
   const bufB = new Uint8Array(n);
@@ -546,7 +551,8 @@ function peelDarkRim(img: ImageData): void {
           iL[y0 * stride + x1]! -
           iL[y1 * stride + x0]! +
           iL[y0 * stride + x0]!;
-        if (pix + gap < sL / sM) {
+        const cloth = sL / sM;
+        if (pix + gap < cloth && cloth >= clothMin) {
           kill[i] = 1;
           killed++;
         }
