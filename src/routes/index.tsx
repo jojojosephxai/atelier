@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { addDays, format, startOfToday } from "date-fns";
 import { Camera, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FittedPiece } from "@/components/fitted-piece";
 import { NativeSelect } from "@/components/ui/field";
@@ -41,6 +41,62 @@ const ORDER = [
   "accessories",
   "bags",
 ] as const;
+
+function replayThumbPress(button: HTMLButtonElement) {
+  button.classList.remove("is-pressing");
+  void button.offsetWidth;
+  button.classList.add("is-pressing");
+}
+
+function LookRemoveOverlay({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCancelRef.current();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div
+      className="look-kit-remove"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Remove this look"
+    >
+      <button
+        type="button"
+        className="look-kit-remove-scrim"
+        aria-label="Cancel"
+        onClick={onCancel}
+      />
+      <div className="look-kit-remove-copy">
+        <p className="look-kit-remove-title">Remove</p>
+        <button
+          ref={confirmRef}
+          type="button"
+          className="look-kit-remove-confirm"
+          onClick={onConfirm}
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function KitTile({ garment, label }: { garment: Garment; label: string }) {
   const src = usePieceSrc(garment);
@@ -144,6 +200,7 @@ function StartPage() {
   const [climateOverride, setClimateOverride] = useState<Climate | null>(null);
   const [shuffleAvoid, setShuffleAvoid] = useState<string[]>([]);
   const [blockKeys, setBlockKeys] = useState<string[]>([]);
+  const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
   const climate = climateOverride ?? storedClimate;
   const season = currentSeason();
   const scene = ROUTINES.find((r) => r.id === routine)!;
@@ -221,23 +278,36 @@ function StartPage() {
     toast("That's today's look");
   }
 
-  function castThumb(pieces: Garment[], next: 1 | -1) {
+  function castThumb(
+    pieces: Garment[],
+    next: 1 | -1,
+    behavior: "toggle" | "commit",
+  ) {
     const combo = comboKey(pieces.map((g) => g.id));
     const key = voteRecordKey(routine, climate, combo);
     const cur = { ...(votes ?? {}) };
-    if (votePolarity(cur[key]) === next) {
-      delete cur[key];
-    } else {
-      cur[key] = {
-        garmentIdsSorted: combo,
-        occasion: routine,
-        climate,
-        whyKey: whyPrimaryKey(pieces, routine, climate),
-        vote: next,
-        at: Date.now(),
-        gen: lookRegen,
-        closetSig: closetSig(garments),
-      };
+    const entry = {
+      garmentIdsSorted: combo,
+      occasion: routine,
+      climate,
+      whyKey: whyPrimaryKey(pieces, routine, climate),
+      vote: next,
+      at: Date.now(),
+      gen: lookRegen,
+      closetSig: closetSig(garments),
+    };
+    switch (behavior) {
+      case "toggle":
+        if (votePolarity(cur[key]) === next) delete cur[key];
+        else cur[key] = entry;
+        break;
+      case "commit":
+        cur[key] = entry;
+        break;
+      default: {
+        const unreachable: never = behavior;
+        return unreachable;
+      }
     }
     setProfile({ lookVotes: cur });
   }
@@ -376,8 +446,10 @@ function StartPage() {
             const title = boardY(pieces, routine);
             const slots = kitSlots(pieces, routine);
             const wearing = wearingKey === key;
-            const voteKey = voteRecordKey(routine, climate, comboKey(pieces.map((g) => g.id)));
+            const cardKey = comboKey(pieces.map((g) => g.id));
+            const voteKey = voteRecordKey(routine, climate, cardKey);
             const thumb = votePolarity(votes?.[voteKey]);
+            const downPending = pendingRemoveKey === cardKey;
             const saved = savedFor(pieces);
             return (
               <article
@@ -440,20 +512,44 @@ function StartPage() {
                     <button
                       type="button"
                       aria-label="Keep this look"
-                      aria-pressed={thumb === 1}
-                      onClick={() => castThumb(pieces, 1)}
-                      className={cn(thumb === 1 && "is-on")}
+                      aria-pressed={thumb === 1 && !downPending}
+                      onClick={(event) => {
+                        replayThumbPress(event.currentTarget);
+                        if (downPending) {
+                          setPendingRemoveKey(null);
+                          if (thumb !== 1) castThumb(pieces, 1, "commit");
+                          return;
+                        }
+                        castThumb(pieces, 1, "toggle");
+                      }}
+                      className={cn(
+                        "look-kit-thumb-up",
+                        thumb === 1 && !downPending && "is-on",
+                      )}
                     >
-                      <ThumbsUp className="size-4" />
+                      <ThumbsUp
+                        className="size-4"
+                        fill={thumb === 1 && !downPending ? "currentColor" : "none"}
+                      />
                     </button>
                     <button
                       type="button"
                       aria-label="Skip this look"
-                      aria-pressed={thumb === -1}
-                      onClick={() => castThumb(pieces, -1)}
-                      className={cn(thumb === -1 && "is-on")}
+                      aria-pressed={downPending || thumb === -1}
+                      onClick={(event) => {
+                        replayThumbPress(event.currentTarget);
+                        if (!cardKey) return;
+                        setPendingRemoveKey(cardKey);
+                      }}
+                      className={cn(
+                        "look-kit-thumb-down",
+                        (downPending || thumb === -1) && "is-on",
+                      )}
                     >
-                      <ThumbsDown className="size-4" />
+                      <ThumbsDown
+                        className="size-4"
+                        fill={downPending || thumb === -1 ? "currentColor" : "none"}
+                      />
                     </button>
                   </div>
                   <div className="look-kit-schedule-wrap">
@@ -499,6 +595,15 @@ function StartPage() {
                 >
                   {wearing ? "Wearing" : "Wear this"}
                 </button>
+                {downPending ? (
+                  <LookRemoveOverlay
+                    onCancel={() => setPendingRemoveKey(null)}
+                    onConfirm={() => {
+                      castThumb(pieces, -1, "commit");
+                      setPendingRemoveKey(null);
+                    }}
+                  />
+                ) : null}
               </article>
             );
           })}
