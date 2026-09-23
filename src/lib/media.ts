@@ -47,7 +47,7 @@ export function usePieceSrc(item: {
   return src;
 }
 
-const v = "v57";
+const v = "v58";
 
 export const SAMPLE_IMAGES: Record<string, string> = {
   g_navy_coat: `/sample/cut/navy-coat.webp?${v}`,
