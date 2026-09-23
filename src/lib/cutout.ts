@@ -30,6 +30,14 @@ type CutProfile = {
   alphaSolid: number;
   /** Erode opaque alpha by this many px before rebuild (kills fringe). */
   edgeTrim: number;
+  /**
+   * Peel near-white pixels that touch transparency.
+   * Glass bottles keep an opaque white rim after the soft-alpha kill;
+   * matte jars do not, so this stops at pigment. 0 skips (white clothes).
+   */
+  haloTrim: number;
+  /** Borrow edge color from pigment, not from white glass highlights. */
+  skipPaleDonors: boolean;
   stripHanger: boolean;
 };
 
@@ -39,13 +47,18 @@ const PROFILES: Record<CutMode, CutProfile> = {
     alphaKill: 56,
     alphaSolid: 200,
     edgeTrim: 1,
+    haloTrim: 0,
+    skipPaleDonors: false,
     stripHanger: true,
   },
   product: {
     maxEdge: 1600,
     alphaKill: 72,
     alphaSolid: 220,
-    edgeTrim: 2,
+    // One pixel only — a deeper erode chews glass and softens clay.
+    edgeTrim: 1,
+    haloTrim: 6,
+    skipPaleDonors: true,
     stripHanger: false,
   },
 };
@@ -308,9 +321,6 @@ async function shrinkForCut(file: File, maxEdge: number): Promise<Blob> {
  */
 export function refineMatte(img: ImageData, profile: CutProfile): void {
   const px = img.data;
-  const w = img.width;
-  const h = img.height;
-  const n = w * h;
 
   // 1) Soft white / gray matte → transparent (never eat solid opaque whites).
   for (let i = 0; i < px.length; i += 4) {
@@ -335,40 +345,87 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
     else if (a < profile.alphaSolid) px[i] = 255;
   }
 
-  // 3) Morphological edge trim — drop pixels that sit on the transparent border.
-  if (profile.edgeTrim > 0) {
-    const alpha = new Uint8Array(n);
-    for (let i = 0; i < n; i++) alpha[i] = px[i * 4 + 3] >= 128 ? 1 : 0;
-    let cur = alpha;
-    for (let pass = 0; pass < profile.edgeTrim; pass++) {
-      const next = new Uint8Array(n);
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = y * w + x;
-          if (!cur[idx]) continue;
-          if (
-            cur[idx - 1] &&
-            cur[idx + 1] &&
-            cur[idx - w] &&
-            cur[idx + w]
-          ) {
-            next[idx] = 1;
-          }
-        }
-      }
-      cur = next;
-    }
-    for (let i = 0; i < n; i++) {
-      if (!cur[i]) px[i * 4 + 3] = 0;
-      else if (px[i * 4 + 3] > 0) px[i * 4 + 3] = 255;
-    }
-  }
+  // 3) Opaque white rim on glass. Stops when the pixel is real pigment.
+  //    Before the general erode so we do not eat the dark glass edge.
+  if (profile.haloTrim > 0) stripWhiteHalo(img, profile.haloTrim);
 
-  // 4) Color decontamination on the remaining edge ring.
-  defringeRgb(img);
+  // 5) Morphological edge trim — one tight pixel, not a chew into the jar.
+  if (profile.edgeTrim > 0) erodeAlpha(img, profile.edgeTrim);
+
+  // 6) Color decontamination on the remaining edge ring.
+  defringeRgb(img, profile.skipPaleDonors);
 }
 
-function defringeRgb(img: ImageData): void {
+function isPale(r: number, g: number, b: number): boolean {
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const sat = mx === 0 ? 0 : (mx - mn) / mx;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum > 0.74 && sat < 0.16;
+}
+
+/** Drop a near-white fringe that survived as solid alpha. Interior labels stay. */
+function stripWhiteHalo(img: ImageData, passes: number): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const n = w * h;
+  for (let pass = 0; pass < passes; pass++) {
+    const kill = new Uint8Array(n);
+    let any = false;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (px[i + 3] < 128) continue;
+        const edge =
+          x === 0 ||
+          y === 0 ||
+          x === w - 1 ||
+          y === h - 1 ||
+          px[i - 4 + 3] < 18 ||
+          px[i + 4 + 3] < 18 ||
+          px[i - w * 4 + 3] < 18 ||
+          px[i + w * 4 + 3] < 18;
+        if (!edge || !isPale(px[i]!, px[i + 1]!, px[i + 2]!)) continue;
+        kill[y * w + x] = 1;
+        any = true;
+      }
+    }
+    if (!any) break;
+    for (let i = 0; i < n; i++) {
+      if (kill[i]) px[i * 4 + 3] = 0;
+    }
+  }
+}
+
+function erodeAlpha(img: ImageData, passes: number): void {
+  const px = img.data;
+  const w = img.width;
+  const h = img.height;
+  const n = w * h;
+  const alpha = new Uint8Array(n);
+  for (let i = 0; i < n; i++) alpha[i] = px[i * 4 + 3] >= 128 ? 1 : 0;
+  let cur = alpha;
+  for (let pass = 0; pass < passes; pass++) {
+    const next = new Uint8Array(n);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (!cur[idx]) continue;
+        if (cur[idx - 1] && cur[idx + 1] && cur[idx - w] && cur[idx + w]) {
+          next[idx] = 1;
+        }
+      }
+    }
+    cur = next;
+  }
+  for (let i = 0; i < n; i++) {
+    if (!cur[i]) px[i * 4 + 3] = 0;
+    else if (px[i * 4 + 3] > 0) px[i * 4 + 3] = 255;
+  }
+}
+
+function defringeRgb(img: ImageData, skipPaleDonors: boolean): void {
   const w = img.width;
   const h = img.height;
   const px = img.data;
@@ -414,6 +471,9 @@ function defringeRgb(img: ImageData): void {
             }
           }
           if (neighborClear) continue;
+          if (skipPaleDonors && isPale(src[j]!, src[j + 1]!, src[j + 2]!)) {
+            continue;
+          }
           rs += src[j];
           gs += src[j + 1];
           bs += src[j + 2];
@@ -767,6 +827,8 @@ export function knockBackground(img: HTMLImageElement, maxEdge = 1400): string {
     alphaKill: 64,
     alphaSolid: 210,
     edgeTrim: 1,
+    haloTrim: 0,
+    skipPaleDonors: false,
     stripHanger: false,
   });
   ctx.putImageData(data, 0, 0);

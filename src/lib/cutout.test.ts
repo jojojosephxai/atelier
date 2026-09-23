@@ -43,6 +43,8 @@ describe("refineMatte", () => {
       alphaKill: 72,
       alphaSolid: 220,
       edgeTrim: 1,
+      haloTrim: 0,
+      skipPaleDonors: false,
       stripHanger: false,
     });
 
@@ -73,6 +75,8 @@ describe("refineMatte", () => {
       alphaKill: 72,
       alphaSolid: 220,
       edgeTrim: 1,
+      haloTrim: 0,
+      skipPaleDonors: false,
       stripHanger: false,
     });
 
@@ -80,5 +84,86 @@ describe("refineMatte", () => {
       const a = img.data[i]!;
       assert.ok(a === 0 || a === 255, `unexpected alpha ${a}`);
     }
+  });
+
+  it("peels an opaque white glass rim and keeps an interior label", () => {
+    const img = makeImageData(16, 16, (x, y, px, i) => {
+      const inside = x >= 2 && x <= 13 && y >= 2 && y <= 13;
+      if (!inside) {
+        px[i + 3] = 0;
+        return;
+      }
+      const rim = x === 2 || x === 13 || y === 2 || y === 13;
+      if (rim) {
+        px[i] = 250;
+        px[i + 1] = 250;
+        px[i + 2] = 248;
+        px[i + 3] = 255;
+        return;
+      }
+      // White label sitting inside the bottle, not on the silhouette.
+      if (x >= 6 && x <= 9 && y >= 6 && y <= 9) {
+        px[i] = 250;
+        px[i + 1] = 248;
+        px[i + 2] = 242;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i] = 36;
+      px[i + 1] = 48;
+      px[i + 2] = 42;
+      px[i + 3] = 255;
+    });
+
+    refineMatte(img, {
+      maxEdge: 1600,
+      alphaKill: 72,
+      alphaSolid: 220,
+      edgeTrim: 1,
+      haloTrim: 6,
+      skipPaleDonors: true,
+      stripHanger: false,
+    });
+
+    const rim = (2 * 16 + 2) * 4;
+    assert.equal(img.data[rim + 3], 0);
+
+    const label = (7 * 16 + 7) * 4;
+    assert.equal(img.data[label + 3], 255);
+    assert.ok(img.data[label]! > 200);
+
+    const glass = (5 * 16 + 5) * 4;
+    assert.equal(img.data[glass + 3], 255);
+    assert.ok(img.data[glass]! < 80);
+  });
+
+  it("does not chew a matte edge that is already pigment", () => {
+    const img = makeImageData(14, 14, (x, y, px, i) => {
+      if (x >= 3 && x <= 10 && y >= 3 && y <= 10) {
+        px[i] = 42;
+        px[i + 1] = 36;
+        px[i + 2] = 32;
+        px[i + 3] = 255;
+        return;
+      }
+      px[i + 3] = 0;
+    });
+
+    refineMatte(img, {
+      maxEdge: 1600,
+      alphaKill: 72,
+      alphaSolid: 220,
+      edgeTrim: 1,
+      haloTrim: 6,
+      skipPaleDonors: true,
+      stripHanger: false,
+    });
+
+    // Halo trim must leave the dark jar. One-pixel erode only.
+    const edge = (3 * 14 + 4) * 4;
+    assert.equal(img.data[edge + 3], 0);
+    const kept = (4 * 14 + 5) * 4;
+    assert.equal(img.data[kept + 3], 255);
+    assert.ok(img.data[kept]! < 80);
   });
 });
