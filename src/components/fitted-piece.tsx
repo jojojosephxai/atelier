@@ -16,14 +16,15 @@ export function FittedPiece({
 }) {
   const ref = useRef<HTMLImageElement>(null);
   const [shown, setShown] = useState(src);
+  const [trackedSrc, setTrackedSrc] = useState(src);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
+  if (src !== trackedSrc) {
+    setTrackedSrc(src);
     setShown(src);
     setReady(false);
     setFailed(false);
-  }, [src]);
+  }
 
   useEffect(() => {
     const img = ref.current;

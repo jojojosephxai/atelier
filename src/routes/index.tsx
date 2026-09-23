@@ -5,8 +5,8 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FittedPiece } from "@/components/fitted-piece";
 import { NativeSelect } from "@/components/ui/field";
-import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy, boardY } from "@/lib/board-set";
-import { compressImage } from "@/lib/image";
+import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy } from "@/lib/board-set";
+import { lookCardModel } from "@/lib/look-card";
 import { whyForSet, whyPrimaryKey } from "@/lib/why-compose";
 import { comboKey, lookCoreKey } from "@/lib/look";
 import {
@@ -278,16 +278,9 @@ function StartPage() {
     setBlockKeys((keys) => [...keys, core, combo].filter(Boolean));
   }
 
-  async function onAddPhoto(file: File | undefined, pieces: Garment[], look: SuggestedLook) {
-    if (!file) return;
-    try {
-      const data = await compressImage(file);
-      const id = ensureSaved(pieces, look);
-      updateLook(id, { photoDataUrl: data });
-      toast("Photo added");
-    } catch {
-      toast("Could not read that photo");
-    }
+  function onAddPhoto(file: File | undefined) {
+    // A chosen flat-lay must not replace the kit grid or stick to a look id.
+    void file;
   }
 
   const wearingKey = wornLog?.find((w) => w.date === todayISO())
@@ -371,18 +364,25 @@ function StartPage() {
         <div className="look-cols mt-3">
           {suggestions.map((look, i) => {
             const pieces = kits[i] ?? [];
-            const key = pieces.map((g) => g.id).join("|");
+            const saved = savedFor(pieces);
+            const bound = lookCardModel(pieces, routine, saved?.photoDataUrl);
+            const wearKey = pieces.map((g) => g.id).join("|");
             const why = localWhys[i] || "";
-            const title = boardY(pieces, routine);
-            const slots = kitSlots(pieces, routine);
-            const wearing = wearingKey === key;
+            const title = bound.title;
+            const slots = kitSlots(
+              bound.garmentIds
+                .map((id) => pieces.find((g) => g.id === id))
+                .filter((g): g is Garment => Boolean(g)),
+              routine,
+            );
+            const wearing = wearingKey === wearKey;
             const voteKey = voteRecordKey(routine, climate, comboKey(pieces.map((g) => g.id)));
             const thumb = votePolarity(votes?.[voteKey]);
-            const saved = savedFor(pieces);
             return (
               <article
-                key={`${i}-${look.name}-${look.garmentIds[0] ?? i}`}
+                key={`${comboKey(bound.garmentIds)}:${i}`}
                 className="look-kit"
+                data-look-body="kit"
               >
                 <button
                   type="button"
@@ -481,7 +481,7 @@ function StartPage() {
                       accept="image/*"
                       className="sr-only"
                       onChange={(e) => {
-                        void onAddPhoto(e.target.files?.[0], pieces, look);
+                        onAddPhoto(e.target.files?.[0]);
                         e.target.value = "";
                       }}
                     />

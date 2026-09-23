@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { visibleGarmentSrc } from "./look-card.ts";
 import { cachedPhotoUrl, photoUrl } from "./photo-db";
 
 export function pieceSrc(item: {
@@ -14,7 +15,7 @@ export function pieceSrc(item: {
     const cached = cachedPhotoUrl(blobId);
     if (cached) return cached;
   }
-  return item.imageSrc || undefined;
+  return visibleGarmentSrc(item.imageSrc);
 }
 
 export function usePieceSrc(item: {
@@ -24,27 +25,27 @@ export function usePieceSrc(item: {
   imageBlobId?: string;
   photoBlobId?: string;
 }): string | undefined {
-  const [src, setSrc] = useState(() => pieceSrc(item));
-  const blobId = item.imageBlobId || item.photoBlobId;
+  const direct = pieceSrc(item);
+  const blobId = direct ? undefined : item.imageBlobId || item.photoBlobId;
+  const [blobSrc, setBlobSrc] = useState<string | undefined>(() =>
+    blobId ? cachedPhotoUrl(blobId) : undefined,
+  );
   useEffect(() => {
-    const next = pieceSrc(item);
-    if (next) {
-      setSrc(next);
-      return;
-    }
-    if (!blobId) {
-      setSrc(undefined);
+    if (!blobId) return;
+    const cached = cachedPhotoUrl(blobId);
+    if (cached) {
+      setBlobSrc(cached);
       return;
     }
     let live = true;
     void photoUrl(blobId).then((url) => {
-      if (live) setSrc(url);
+      if (live) setBlobSrc(url);
     });
     return () => {
       live = false;
     };
-  }, [item.id, blobId, item.imageSrc]);
-  return src;
+  }, [blobId]);
+  return direct ?? blobSrc;
 }
 
 const v = "v55";
