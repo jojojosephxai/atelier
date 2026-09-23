@@ -265,33 +265,27 @@ html[data-theme="dark"] {
     color: #3f3b36;
   }
 
-  .closet-tile .outfit-studio {
-    background: #f6f1e8;
+  /* Same plate as baked grooming shots (#f7f2e8) so Closet and Grooming match. */
+  .closet-tile,
+  .groom-tile {
+    --atelier-studio: #f7f2e8;
   }
 
-  .closet-tile .outfit-studio img {
-    object-fit: contain !important;
-    object-position: center;
-    padding: 10%;
-    box-sizing: border-box;
-  }
-
-  /* Match baked sample plate #f7f2e8 so opaque product photos don't read as boxes. */
-  .groom-tile .outfit-studio {
-    background: #f7f2e8;
-  }
-
+  .closet-tile .outfit-studio,
+  .groom-tile .outfit-studio,
   .groom-tile[data-tone="day"] .outfit-studio,
   .groom-tile[data-tone="night"] .outfit-studio,
   .groom-tile[data-tone="core"] .outfit-studio {
     background: #f7f2e8;
   }
 
+  .closet-tile .outfit-studio img,
   .groom-tile .outfit-studio img,
   .groom-tile .groom-shot {
     object-fit: contain !important;
     object-position: center;
-    padding: 12%;
+    /* One modest inset. 10% / 12% made the two shelves frame differently. */
+    padding: 8%;
     box-sizing: border-box;
   }
 
@@ -506,15 +500,89 @@ html[data-theme="dark"] {
     border-radius: 0;
     color: var(--atelier-muted);
     background: transparent;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .look-kit-vote button svg {
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  .look-kit-vote button.is-pressing svg {
+    animation: look-thumb-press 340ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .look-kit-vote button + button {
     border-left: 1px solid color-mix(in oklab, var(--atelier-fg) 12%, transparent);
   }
 
-  .look-kit-vote button.is-on {
+  .look-kit-vote button.look-kit-thumb-up.is-on {
+    color: var(--atelier-accent-fg);
+    background: var(--atelier-accent);
+  }
+
+  .look-kit-vote button.look-kit-thumb-down.is-on {
+    color: var(--atelier-accent-fg);
+    background: var(--atelier-danger);
+  }
+
+  .look-kit-remove {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: grid;
+    place-items: center;
+    border-radius: 1.1rem;
+    animation: look-remove-in 240ms ease;
+  }
+
+  .look-kit-remove-scrim {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: color-mix(in oklab, var(--atelier-bg) 58%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .look-kit-remove-copy {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    pointer-events: none;
+  }
+
+  .look-kit-remove-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 2.75rem;
+    line-height: 0.9;
     color: var(--atelier-fg);
-    background: #efe8dc;
+  }
+
+  .look-kit-remove-confirm {
+    pointer-events: auto;
+    box-sizing: border-box;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 1.5rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--atelier-accent);
+    color: var(--atelier-accent-fg);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1;
   }
 
   .intro-pill {
@@ -581,6 +649,10 @@ html[data-theme="dark"] {
 
   .look-kit-actions .look-kit-photo {
     cursor: pointer;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
   }
 
   .look-kit-actions .look-kit-text {
@@ -752,6 +824,20 @@ html[data-theme="dark"] {
   @media (min-width: 80rem) {
     .looks-cols {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    /* Wide screens: same card width as Today. Narrower screens keep the Looks grid. */
+    .stylist-results {
+      box-sizing: border-box;
+      width: 100vw;
+      max-width: 100vw;
+      margin-inline: calc(50% - 50vw);
+      padding-inline: 1.75rem;
+    }
+
+    .stylist-results .looks-cols {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      column-gap: 0.5rem;
     }
   }
 
@@ -1105,6 +1191,30 @@ html[data-theme="dark"] {
   }
 }
 
+@keyframes look-remove-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes look-thumb-press {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(0.8);
+  }
+  70% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -1322,23 +1432,30 @@ html[data-theme="dark"] {
 }
 
 @media (min-width: 56rem) {
+  /* One shared set of rows so every card's bands share bottom edges.
+     row-gap stays 0 — a gap here would split the bands inside each card. */
   .look-cols {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: none;
     align-items: stretch;
     column-gap: 0.5rem;
+    row-gap: 0;
   }
 
   .look-kit {
-    display: flex;
-    flex-direction: column;
-    grid-row: auto;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 5;
+    align-items: stretch;
     height: auto;
     min-height: 0;
+    /* inline-size containment blocks subgrid, so the shared rows never form */
+    container-type: normal;
   }
 
   .look-kit-title {
+    grid-row: 1;
+    align-self: end;
     min-height: 1.95rem;
     white-space: nowrap;
     overflow: hidden;
@@ -1346,28 +1463,45 @@ html[data-theme="dark"] {
   }
 
   .look-kit .why-band {
+    grid-row: 2;
     display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    align-self: flex-start;
-    min-height: 0;
-    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: stretch;
+    justify-self: stretch;
+    min-height: auto;
+    width: 100%;
     max-width: 100%;
-    gap: 12px;
+    gap: 0;
   }
 
   .look-kit .why-paper {
-    flex: 0 0 auto;
-    width: fit-content;
+    flex: 1 1 auto;
+    width: 100% !important;
     max-width: 100%;
-    min-height: 0;
+    min-height: auto;
     max-height: none;
   }
 
   .look-kit .kit-grid {
-    align-self: start;
+    grid-row: 3;
+    align-self: end;
+    justify-self: stretch;
     width: 100%;
+    min-height: auto;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .look-kit-actions {
+    grid-row: 4;
+    align-self: end;
+    justify-self: stretch;
+  }
+
+  .look-kit-cta {
+    grid-row: 5;
+    align-self: end;
+    justify-self: stretch;
   }
 
   .look-kit .kit-grid > .kit-tile,
@@ -1404,7 +1538,7 @@ html[data-theme="dark"] {
 
   .look-kit-cta {
     margin-top: 0.45rem;
-    align-self: stretch;
+    align-self: end;
     flex-shrink: 0;
     display: inline-flex;
     width: 100%;

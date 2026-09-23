@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { addDays, format, startOfToday } from "date-fns";
 import { Camera, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FittedPiece } from "@/components/fitted-piece";
 import { NativeSelect } from "@/components/ui/field";
-import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy, boardY } from "@/lib/board-set";
-import { compressImage } from "@/lib/image";
+import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy } from "@/lib/board-set";
+import { exportLookKitGrid, type KitExportResult } from "@/lib/kit-grid-export";
+import { lookCardModel } from "@/lib/look-card";
 import { whyForSet, whyPrimaryKey } from "@/lib/why-compose";
 import { comboKey, lookCoreKey } from "@/lib/look";
 import {
@@ -42,6 +43,62 @@ const ORDER = [
   "bags",
 ] as const;
 
+function replayThumbPress(button: HTMLButtonElement) {
+  button.classList.remove("is-pressing");
+  void button.offsetWidth;
+  button.classList.add("is-pressing");
+}
+
+function LookRemoveOverlay({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCancelRef.current();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div
+      className="look-kit-remove"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Remove this look"
+    >
+      <button
+        type="button"
+        className="look-kit-remove-scrim"
+        aria-label="Cancel"
+        onClick={onCancel}
+      />
+      <div className="look-kit-remove-copy">
+        <p className="look-kit-remove-title">Remove</p>
+        <button
+          ref={confirmRef}
+          type="button"
+          className="look-kit-remove-confirm"
+          onClick={onConfirm}
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function KitTile({ garment, label }: { garment: Garment; label: string }) {
   const src = usePieceSrc(garment);
   return (
@@ -54,6 +111,23 @@ function KitTile({ garment, label }: { garment: Garment; label: string }) {
       <p className="kit-label">{label}</p>
     </article>
   );
+}
+
+function toastKitExport(result: KitExportResult) {
+  switch (result) {
+    case "downloaded":
+      toast("Kit grid saved");
+      break;
+    case "shared":
+      toast("Kit grid shared");
+      break;
+    case "cancelled":
+      break;
+    default: {
+      const exhaustive: never = result;
+      return exhaustive;
+    }
+  }
 }
 
 function kitSlots(pieces: Garment[], routine: RoutineId) {
@@ -144,6 +218,8 @@ function StartPage() {
   const [climateOverride, setClimateOverride] = useState<Climate | null>(null);
   const [shuffleAvoid, setShuffleAvoid] = useState<string[]>([]);
   const [blockKeys, setBlockKeys] = useState<string[]>([]);
+  const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
+  const exportingKits = useRef(new Set<string>());
   const climate = climateOverride ?? storedClimate;
   const season = currentSeason();
   const scene = ROUTINES.find((r) => r.id === routine)!;
@@ -221,23 +297,36 @@ function StartPage() {
     toast("That's today's look");
   }
 
-  function castThumb(pieces: Garment[], next: 1 | -1) {
+  function castThumb(
+    pieces: Garment[],
+    next: 1 | -1,
+    behavior: "toggle" | "commit",
+  ) {
     const combo = comboKey(pieces.map((g) => g.id));
     const key = voteRecordKey(routine, climate, combo);
     const cur = { ...(votes ?? {}) };
-    if (votePolarity(cur[key]) === next) {
-      delete cur[key];
-    } else {
-      cur[key] = {
-        garmentIdsSorted: combo,
-        occasion: routine,
-        climate,
-        whyKey: whyPrimaryKey(pieces, routine, climate),
-        vote: next,
-        at: Date.now(),
-        gen: lookRegen,
-        closetSig: closetSig(garments),
-      };
+    const entry = {
+      garmentIdsSorted: combo,
+      occasion: routine,
+      climate,
+      whyKey: whyPrimaryKey(pieces, routine, climate),
+      vote: next,
+      at: Date.now(),
+      gen: lookRegen,
+      closetSig: closetSig(garments),
+    };
+    switch (behavior) {
+      case "toggle":
+        if (votePolarity(cur[key]) === next) delete cur[key];
+        else cur[key] = entry;
+        break;
+      case "commit":
+        cur[key] = entry;
+        break;
+      default: {
+        const unreachable: never = behavior;
+        return unreachable;
+      }
     }
     setProfile({ lookVotes: cur });
   }
@@ -278,15 +367,16 @@ function StartPage() {
     setBlockKeys((keys) => [...keys, core, combo].filter(Boolean));
   }
 
-  async function onAddPhoto(file: File | undefined, pieces: Garment[], look: SuggestedLook) {
-    if (!file) return;
+  async function onExportKit(grid: HTMLElement, name: string, key: string) {
+    if (exportingKits.current.has(key)) return;
+    exportingKits.current.add(key);
     try {
-      const data = await compressImage(file);
-      const id = ensureSaved(pieces, look);
-      updateLook(id, { photoDataUrl: data });
-      toast("Photo added");
+      const result = await exportLookKitGrid(grid, name);
+      toastKitExport(result);
     } catch {
-      toast("Could not read that photo");
+      toast("Could not export this kit");
+    } finally {
+      exportingKits.current.delete(key);
     }
   }
 
@@ -371,18 +461,25 @@ function StartPage() {
         <div className="look-cols mt-3">
           {suggestions.map((look, i) => {
             const pieces = kits[i] ?? [];
-            const key = pieces.map((g) => g.id).join("|");
-            const why = localWhys[i] || "";
-            const title = boardY(pieces, routine);
-            const slots = kitSlots(pieces, routine);
-            const wearing = wearingKey === key;
-            const voteKey = voteRecordKey(routine, climate, comboKey(pieces.map((g) => g.id)));
-            const thumb = votePolarity(votes?.[voteKey]);
             const saved = savedFor(pieces);
+            const bound = lookCardModel(pieces, routine, saved?.photoDataUrl);
+            const kitPieces = bound.garmentIds
+              .map((id) => pieces.find((g) => g.id === id))
+              .filter((g): g is Garment => Boolean(g));
+            const wearKey = kitPieces.map((g) => g.id).join("|");
+            const why = localWhys[i] || "";
+            const title = bound.title;
+            const slots = kitSlots(kitPieces, routine);
+            const wearing = wearingKey === wearKey;
+            const cardKey = comboKey(bound.garmentIds);
+            const voteKey = voteRecordKey(routine, climate, cardKey);
+            const thumb = votePolarity(votes?.[voteKey]);
+            const downPending = pendingRemoveKey === cardKey;
             return (
               <article
-                key={`${i}-${look.name}-${look.garmentIds[0] ?? i}`}
+                key={`${comboKey(bound.garmentIds)}:${i}`}
                 className="look-kit"
+                data-look-body="kit"
               >
                 <button
                   type="button"
@@ -440,20 +537,44 @@ function StartPage() {
                     <button
                       type="button"
                       aria-label="Keep this look"
-                      aria-pressed={thumb === 1}
-                      onClick={() => castThumb(pieces, 1)}
-                      className={cn(thumb === 1 && "is-on")}
+                      aria-pressed={thumb === 1 && !downPending}
+                      onClick={(event) => {
+                        replayThumbPress(event.currentTarget);
+                        if (downPending) {
+                          setPendingRemoveKey(null);
+                          if (thumb !== 1) castThumb(pieces, 1, "commit");
+                          return;
+                        }
+                        castThumb(pieces, 1, "toggle");
+                      }}
+                      className={cn(
+                        "look-kit-thumb-up",
+                        thumb === 1 && !downPending && "is-on",
+                      )}
                     >
-                      <ThumbsUp className="size-4" />
+                      <ThumbsUp
+                        className="size-4"
+                        fill={thumb === 1 && !downPending ? "currentColor" : "none"}
+                      />
                     </button>
                     <button
                       type="button"
                       aria-label="Skip this look"
-                      aria-pressed={thumb === -1}
-                      onClick={() => castThumb(pieces, -1)}
-                      className={cn(thumb === -1 && "is-on")}
+                      aria-pressed={downPending || thumb === -1}
+                      onClick={(event) => {
+                        replayThumbPress(event.currentTarget);
+                        if (!cardKey) return;
+                        setPendingRemoveKey(cardKey);
+                      }}
+                      className={cn(
+                        "look-kit-thumb-down",
+                        (downPending || thumb === -1) && "is-on",
+                      )}
                     >
-                      <ThumbsDown className="size-4" />
+                      <ThumbsDown
+                        className="size-4"
+                        fill={downPending || thumb === -1 ? "currentColor" : "none"}
+                      />
                     </button>
                   </div>
                   <div className="look-kit-schedule-wrap">
@@ -471,21 +592,23 @@ function StartPage() {
                       ))}
                     </NativeSelect>
                   </div>
-                  <label
-                    aria-label="Add photo"
+                  <button
+                    type="button"
+                    aria-label="Export kit grid"
                     className="look-kit-icon look-kit-photo"
+                    onClick={(event) => {
+                      const grid = event.currentTarget
+                        .closest(".look-kit")
+                        ?.querySelector(".kit-grid");
+                      if (!(grid instanceof HTMLElement)) {
+                        toast("Could not export this kit");
+                        return;
+                      }
+                      void onExportKit(grid, title, cardKey);
+                    }}
                   >
                     <Camera className="size-4" />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(e) => {
-                        void onAddPhoto(e.target.files?.[0], pieces, look);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -499,6 +622,15 @@ function StartPage() {
                 >
                   {wearing ? "Wearing" : "Wear this"}
                 </button>
+                {downPending ? (
+                  <LookRemoveOverlay
+                    onCancel={() => setPendingRemoveKey(null)}
+                    onConfirm={() => {
+                      castThumb(pieces, -1, "commit");
+                      setPendingRemoveKey(null);
+                    }}
+                  />
+                ) : null}
               </article>
             );
           })}

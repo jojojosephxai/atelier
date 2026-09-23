@@ -5,7 +5,7 @@ import { LookBoard } from "@/components/look-board";
 import { Button } from "@/components/ui/button";
 import { Field, NativeSelect, Textarea } from "@/components/ui/field";
 import { composeLooks } from "@/lib/engine";
-import { likedGarmentIds, skippedLookKeys } from "@/lib/look";
+import { comboKey, likedGarmentIds, skippedLookKeys } from "@/lib/look";
 import { ROUTINES, currentSeason, type RoutineId } from "@/lib/routines";
 import { useWardrobe } from "@/lib/store";
 import type {
@@ -44,17 +44,16 @@ function StylistPage() {
 
   const brief: Brief = { description, climate, occasion, season };
 
-  function compose(next?: Partial<Brief>) {
+  function compose() {
     if (garments.length < 3) {
       toast.error("Add a few more pieces before composing.");
       return;
     }
-    const used: Brief = { ...brief, ...next };
     const id = ++runId.current;
     setBusy(true);
     setStatus("Reading the closet");
 
-    const local = composeLooks(garments, extras, used, {
+    const local = composeLooks(garments, extras, brief, {
       likedIds: likedGarmentIds(profile.lookVotes),
       skipKeys: skippedLookKeys(profile.lookVotes),
     });
@@ -98,15 +97,15 @@ function StylistPage() {
           Style analyzer
         </h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Pick a scene for an instant set, or describe the day when you want
-          something specific. Everything runs on this device from your closet —
-          nothing is sent to a server.
+          Pick a scene to fill the brief, or describe the day yourself. Press
+          Compose looks to generate. Everything runs on this device from your
+          closet — nothing is sent to a server.
         </p>
       </header>
 
       <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-6">
         <p className="text-xs tracking-[0.2em] text-muted uppercase">
-          Instant scenes
+          Scenes
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {ROUTINES.map((r) => (
@@ -118,12 +117,6 @@ function StylistPage() {
                 setDescription(r.description);
                 setOccasion(r.occasion);
                 setSeason(currentSeason());
-                compose({
-                  description: r.description,
-                  occasion: r.occasion,
-                  season: currentSeason(),
-                  climate,
-                });
               }}
               className={cn(
                 "h-11 rounded-md px-4 text-sm",
@@ -195,7 +188,7 @@ function StylistPage() {
           />
         </Field>
         <div className="mt-5 flex justify-end">
-          <Button onClick={() => compose()} disabled={busy}>
+          <Button onClick={compose} disabled={busy}>
             {busy ? "Composing" : "Compose looks"}
           </Button>
         </div>
@@ -205,12 +198,12 @@ function StylistPage() {
       </section>
 
       {results.length ? (
-        <section className="space-y-4">
+        <section className="stylist-results space-y-4">
           <h2 className="font-display text-3xl text-fg">Three looks</h2>
           <div className="looks-cols">
             {results.map((look) => {
               const saved = looks.find(
-                (l) => l.garmentIds.join() === look.garmentIds.join(),
+                (l) => comboKey(l.garmentIds) === comboKey(look.garmentIds),
               );
               return (
                 <LookBoard

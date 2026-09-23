@@ -59,6 +59,7 @@ export function ExtraCard({
           <FittedPiece
             src={src}
             eager={eager}
+            cut="product"
             className="groom-shot absolute inset-0"
           />
         ) : null}

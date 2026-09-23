@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { visibleGarmentSrc } from "./look-card.ts";
 import { cachedPhotoUrl, photoUrl } from "./photo-db";
 
 export function pieceSrc(item: {
@@ -14,7 +15,7 @@ export function pieceSrc(item: {
     const cached = cachedPhotoUrl(blobId);
     if (cached) return cached;
   }
-  return item.imageSrc || undefined;
+  return visibleGarmentSrc(item.imageSrc);
 }
 
 export function usePieceSrc(item: {
@@ -24,30 +25,30 @@ export function usePieceSrc(item: {
   imageBlobId?: string;
   photoBlobId?: string;
 }): string | undefined {
-  const [src, setSrc] = useState(() => pieceSrc(item));
-  const blobId = item.imageBlobId || item.photoBlobId;
+  const direct = pieceSrc(item);
+  const blobId = direct ? undefined : item.imageBlobId || item.photoBlobId;
+  const [blobSrc, setBlobSrc] = useState<string | undefined>(() =>
+    blobId ? cachedPhotoUrl(blobId) : undefined,
+  );
   useEffect(() => {
-    const next = pieceSrc(item);
-    if (next) {
-      setSrc(next);
-      return;
-    }
-    if (!blobId) {
-      setSrc(undefined);
+    if (!blobId) return;
+    const cached = cachedPhotoUrl(blobId);
+    if (cached) {
+      setBlobSrc(cached);
       return;
     }
     let live = true;
     void photoUrl(blobId).then((url) => {
-      if (live) setSrc(url);
+      if (live) setBlobSrc(url);
     });
     return () => {
       live = false;
     };
-  }, [item.id, blobId, item.imageSrc]);
-  return src;
+  }, [blobId]);
+  return direct ?? blobSrc;
 }
 
-const v = "v55";
+const v = "v58";
 
 export const SAMPLE_IMAGES: Record<string, string> = {
   g_navy_coat: `/sample/cut/navy-coat.webp?${v}`,
@@ -102,8 +103,8 @@ export const SAMPLE_IMAGES: Record<string, string> = {
   g_denim_jacket: `/sample/cut/denim-jacket.webp?${v}`,
   g_rain_shell: `/sample/cut/rain-shell.webp?${v}`,
   e_bergamot: `/sample/cut/colonia.webp?${v}`,
-  e_vetiver: `/sample/cut/vetiver.webp?${v}`,
-  e_tonka: `/sample/cut/tonka-ambre.webp?${v}`,
+  e_vetiver: `/sample/cut/grey-flannel.webp?${v}`,
+  e_tonka: `/sample/cut/tonka.webp?${v}`,
   e_cleanser: `/sample/cut/cerave-cleanser.webp?${v}`,
   e_vitc: `/sample/cut/skinceuticals-ce.webp?${v}`,
   e_moist: `/sample/cut/lrp-moist.webp?${v}`,
@@ -111,5 +112,5 @@ export const SAMPLE_IMAGES: Record<string, string> = {
   e_retinol: `/sample/cut/gg-retinol.webp?${v}`,
   e_night: `/sample/cut/weleda-night.webp?${v}`,
   e_clay: `/sample/cut/hanz-clay.webp?${v}`,
-  e_balm: `/sample/cut/lelabo-beard.webp?${v}`,
+  e_balm: `/sample/cut/santal-33.webp?${v}`,
 };
