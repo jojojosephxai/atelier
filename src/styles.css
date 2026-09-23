@@ -1322,23 +1322,30 @@ html[data-theme="dark"] {
 }
 
 @media (min-width: 56rem) {
+  /* One shared set of rows so every card's bands share bottom edges.
+     row-gap stays 0 — a gap here would split the bands inside each card. */
   .look-cols {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: none;
     align-items: stretch;
     column-gap: 0.5rem;
+    row-gap: 0;
   }
 
   .look-kit {
-    display: flex;
-    flex-direction: column;
-    grid-row: auto;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 5;
+    align-items: stretch;
     height: auto;
     min-height: 0;
+    /* inline-size containment blocks subgrid, so the shared rows never form */
+    container-type: normal;
   }
 
   .look-kit-title {
+    grid-row: 1;
+    align-self: end;
     min-height: 1.95rem;
     white-space: nowrap;
     overflow: hidden;
@@ -1346,28 +1353,45 @@ html[data-theme="dark"] {
   }
 
   .look-kit .why-band {
+    grid-row: 2;
     display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    align-self: flex-start;
-    min-height: 0;
-    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: stretch;
+    justify-self: stretch;
+    min-height: auto;
+    width: 100%;
     max-width: 100%;
-    gap: 12px;
+    gap: 0;
   }
 
   .look-kit .why-paper {
-    flex: 0 0 auto;
-    width: fit-content;
+    flex: 1 1 auto;
+    width: 100% !important;
     max-width: 100%;
-    min-height: 0;
+    min-height: auto;
     max-height: none;
   }
 
   .look-kit .kit-grid {
-    align-self: start;
+    grid-row: 3;
+    align-self: end;
+    justify-self: stretch;
     width: 100%;
+    min-height: auto;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .look-kit-actions {
+    grid-row: 4;
+    align-self: end;
+    justify-self: stretch;
+  }
+
+  .look-kit-cta {
+    grid-row: 5;
+    align-self: end;
+    justify-self: stretch;
   }
 
   .look-kit .kit-grid > .kit-tile,
@@ -1404,7 +1428,7 @@ html[data-theme="dark"] {
 
   .look-kit-cta {
     margin-top: 0.45rem;
-    align-self: stretch;
+    align-self: end;
     flex-shrink: 0;
     display: inline-flex;
     width: 100%;
