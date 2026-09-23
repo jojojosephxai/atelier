@@ -500,15 +500,89 @@ html[data-theme="dark"] {
     border-radius: 0;
     color: var(--atelier-muted);
     background: transparent;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .look-kit-vote button svg {
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  .look-kit-vote button.is-pressing svg {
+    animation: look-thumb-press 340ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .look-kit-vote button + button {
     border-left: 1px solid color-mix(in oklab, var(--atelier-fg) 12%, transparent);
   }
 
-  .look-kit-vote button.is-on {
+  .look-kit-vote button.look-kit-thumb-up.is-on {
+    color: var(--atelier-accent-fg);
+    background: var(--atelier-accent);
+  }
+
+  .look-kit-vote button.look-kit-thumb-down.is-on {
+    color: var(--atelier-accent-fg);
+    background: var(--atelier-danger);
+  }
+
+  .look-kit-remove {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: grid;
+    place-items: center;
+    border-radius: 1.1rem;
+    animation: look-remove-in 240ms ease;
+  }
+
+  .look-kit-remove-scrim {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: color-mix(in oklab, var(--atelier-bg) 58%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .look-kit-remove-copy {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    pointer-events: none;
+  }
+
+  .look-kit-remove-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 2.75rem;
+    line-height: 0.9;
     color: var(--atelier-fg);
-    background: #efe8dc;
+  }
+
+  .look-kit-remove-confirm {
+    pointer-events: auto;
+    box-sizing: border-box;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 1.5rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--atelier-accent);
+    color: var(--atelier-accent-fg);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1;
   }
 
   .intro-pill {
@@ -1096,6 +1170,30 @@ html[data-theme="dark"] {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@keyframes look-remove-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes look-thumb-press {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(0.8);
+  }
+  70% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
