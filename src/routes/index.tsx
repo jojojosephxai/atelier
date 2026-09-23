@@ -5,8 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FittedPiece } from "@/components/fitted-piece";
 import { NativeSelect } from "@/components/ui/field";
-import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy, boardY } from "@/lib/board-set";
+import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWhy } from "@/lib/board-set";
 import { exportLookKitGrid, type KitExportResult } from "@/lib/kit-grid-export";
+import { lookCardModel } from "@/lib/look-card";
 import { whyForSet, whyPrimaryKey } from "@/lib/why-compose";
 import { comboKey, lookCoreKey } from "@/lib/look";
 import {
@@ -460,20 +461,25 @@ function StartPage() {
         <div className="look-cols mt-3">
           {suggestions.map((look, i) => {
             const pieces = kits[i] ?? [];
-            const key = pieces.map((g) => g.id).join("|");
+            const saved = savedFor(pieces);
+            const bound = lookCardModel(pieces, routine, saved?.photoDataUrl);
+            const kitPieces = bound.garmentIds
+              .map((id) => pieces.find((g) => g.id === id))
+              .filter((g): g is Garment => Boolean(g));
+            const wearKey = kitPieces.map((g) => g.id).join("|");
             const why = localWhys[i] || "";
-            const title = boardY(pieces, routine);
-            const slots = kitSlots(pieces, routine);
-            const wearing = wearingKey === key;
-            const cardKey = comboKey(pieces.map((g) => g.id));
+            const title = bound.title;
+            const slots = kitSlots(kitPieces, routine);
+            const wearing = wearingKey === wearKey;
+            const cardKey = comboKey(bound.garmentIds);
             const voteKey = voteRecordKey(routine, climate, cardKey);
             const thumb = votePolarity(votes?.[voteKey]);
             const downPending = pendingRemoveKey === cardKey;
-            const saved = savedFor(pieces);
             return (
               <article
-                key={`${i}-${look.name}-${look.garmentIds[0] ?? i}`}
+                key={`${comboKey(bound.garmentIds)}:${i}`}
                 className="look-kit"
+                data-look-body="kit"
               >
                 <button
                   type="button"
@@ -598,7 +604,7 @@ function StartPage() {
                         toast("Could not export this kit");
                         return;
                       }
-                      void onExportKit(grid, title, key);
+                      void onExportKit(grid, title, cardKey);
                     }}
                   >
                     <Camera className="size-4" />

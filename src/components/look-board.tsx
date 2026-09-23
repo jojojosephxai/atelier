@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
-import { memo, useEffect, useState } from "react";
-import { ImagePlus, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { toast } from "sonner";
+import { memo } from "react";
+import { ImagePlus, ThumbsDown, ThumbsUp } from "lucide-react";
 import { LookGrid } from "@/components/look-grid";
 import { displayLookName } from "@/lib/board-set";
 import { displayLookWhy } from "@/lib/describe-look";
-import { compressImage } from "@/lib/image";
+import { lookCardModel } from "@/lib/look-card";
 import { lookCoreKey } from "@/lib/look";
 import { votePolarity } from "@/lib/look-votes";
 import { useWardrobe } from "@/lib/store";
@@ -58,55 +57,24 @@ export const LookBoard = memo(function LookBoard({
   void extras;
   void climateNotes;
   void compact;
-  const updateLook = useWardrobe((s) => s.updateLook);
-  const addLook = useWardrobe((s) => s.addLook);
+  void lookId;
+  void source;
   const setProfile = useWardrobe((s) => s.setProfile);
   const lookVotes = useWardrobe((s) => s.profile.lookVotes);
   const climate = useWardrobe((s) => s.profile.defaultClimate);
-  const [photo, setPhoto] = useState(photoDataUrl);
-  const [id, setId] = useState(lookId);
-  useEffect(() => setPhoto(photoDataUrl), [photoDataUrl]);
-  useEffect(() => setId(lookId), [lookId]);
 
   const pieces = garmentIds
     .map((gid) => garments.find((g) => g.id === gid))
     .filter((g): g is Garment => Boolean(g));
 
-  async function onPick(file?: File) {
-    if (!file) return;
-    try {
-      const data = await compressImage(file, 720);
-      let nextId = id;
-      if (!nextId) {
-        nextId = addLook({
-          name,
-          garmentIds,
-          extraIds: [],
-          occasion: occasion || "",
-          notes: rationale ?? "",
-          source,
-          photoDataUrl: data,
-        });
-        setId(nextId);
-      } else {
-        updateLook(nextId, { photoDataUrl: data });
-      }
-      setPhoto(data);
-      toast("Photo added");
-    } catch {
-      toast("Could not read that photo");
-    }
-  }
-
-  function clearPhoto() {
-    if (id) updateLook(id, { photoDataUrl: undefined });
-    setPhoto(undefined);
-  }
-
   const voteKey = lookCoreKey(garmentIds, garments);
   const vote = votePolarity(lookVotes?.[voteKey]);
   const routine = routineOf(`${occasion} ${name} ${rationale}`);
+  const bound = lookCardModel(pieces, routine, photoDataUrl);
   const title = displayLookName(name, pieces, routine);
+  const kit = bound.garmentIds
+    .map((id) => pieces.find((g) => g.id === id))
+    .filter((g): g is Garment => Boolean(g));
   const why = displayLookWhy(
     rationale,
     pieces,
@@ -132,21 +100,7 @@ export const LookBoard = memo(function LookBoard({
         ) : null}
       </header>
 
-      {photo ? (
-        <div className="look-card-photo">
-          <img src={photo} alt="" decoding="async" />
-          <button
-            type="button"
-            onClick={clearPhoto}
-            aria-label="Remove photo"
-            className="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full bg-white/90 text-neutral-800 shadow-sm"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-      ) : (
-        <LookGrid garments={pieces} eager={eager} />
-      )}
+      <LookGrid garments={kit} eager={eager} />
 
       <footer className="look-card-actions">
         {incomplete && incomplete.length > 0 ? (
@@ -184,23 +138,20 @@ export const LookBoard = memo(function LookBoard({
             </button>
           </div>
           {actions}
-          {!photo ? (
-            <label
-              aria-label="Add photo"
-              className="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted shadow-[var(--shadow-border)]"
-            >
-              <ImagePlus className="size-3.5" />
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={(e) => {
-                  void onPick(e.target.files?.[0]);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          ) : null}
+          <label
+            aria-label="Add photo"
+            className="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted shadow-[var(--shadow-border)]"
+          >
+            <ImagePlus className="size-3.5" />
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => {
+                e.target.value = "";
+              }}
+            />
+          </label>
         </div>
       </footer>
     </article>

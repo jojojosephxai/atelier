@@ -188,12 +188,15 @@ export function FittedPiece({
 }) {
   const ref = useRef<HTMLImageElement>(null);
   const [shown, setShown] = useState(() => cachedClean(src, cut) ?? src);
+  const [trackedSrc, setTrackedSrc] = useState(src);
+  const [trackedCut, setTrackedCut] = useState(cut);
   const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
+  if (src !== trackedSrc || cut !== trackedCut) {
+    setTrackedSrc(src);
+    setTrackedCut(cut);
     setShown(cachedClean(src, cut) ?? src);
     setFailed(false);
-  }, [src, cut]);
+  }
 
   useIsoLayout(() => {
     const img = ref.current;
