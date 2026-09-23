@@ -743,7 +743,7 @@ export function createSampleCloset(): {
     },
     {
       id: "e_clay",
-      name: "Clay Pomade",
+      name: "Claymation",
       brand: "Hanz de Fuko",
       kind: "grooming",
       notes: "Low shine, strong hold.",
