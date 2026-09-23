@@ -392,6 +392,8 @@ describe("peelDarkRim", () => {
       alphaSolid: 208,
       edgeTrim: 1,
       peelDark: true,
+      haloTrim: 0,
+      skipPaleDonors: false,
       stripHanger: false,
     });
 
