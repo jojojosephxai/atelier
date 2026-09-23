@@ -265,33 +265,27 @@ html[data-theme="dark"] {
     color: #3f3b36;
   }
 
-  .closet-tile .outfit-studio {
-    background: #f6f1e8;
+  /* Same plate as baked grooming shots (#f7f2e8) so Closet and Grooming match. */
+  .closet-tile,
+  .groom-tile {
+    --atelier-studio: #f7f2e8;
   }
 
-  .closet-tile .outfit-studio img {
-    object-fit: contain !important;
-    object-position: center;
-    padding: 10%;
-    box-sizing: border-box;
-  }
-
-  /* Match baked sample plate #f7f2e8 so opaque product photos don't read as boxes. */
-  .groom-tile .outfit-studio {
-    background: #f7f2e8;
-  }
-
+  .closet-tile .outfit-studio,
+  .groom-tile .outfit-studio,
   .groom-tile[data-tone="day"] .outfit-studio,
   .groom-tile[data-tone="night"] .outfit-studio,
   .groom-tile[data-tone="core"] .outfit-studio {
     background: #f7f2e8;
   }
 
+  .closet-tile .outfit-studio img,
   .groom-tile .outfit-studio img,
   .groom-tile .groom-shot {
     object-fit: contain !important;
     object-position: center;
-    padding: 12%;
+    /* One modest inset. 10% / 12% made the two shelves frame differently. */
+    padding: 8%;
     box-sizing: border-box;
   }
 
