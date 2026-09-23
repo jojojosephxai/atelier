@@ -365,6 +365,48 @@ describe("peelDarkRim", () => {
     assert.ok(img.data[shade]! > 120);
   });
 
+  it("does not speckle dark denim or open the waist into white fill", () => {
+    const img = makeImageData(160, 180, (x, y, px, i) => {
+      const leg = x >= 20 && x <= 140 && y >= 24 && y <= 150;
+      const hole = x >= 60 && x <= 100 && y >= 24 && y <= 70;
+      const stitch = leg && !hole && (x === 24 || (y === 36 && x >= 48 && x <= 112));
+      if (leg && !hole) {
+        if (stitch) {
+          px[i] = 16;
+          px[i + 1] = 18;
+          px[i + 2] = 32;
+        } else {
+          px[i] = 30;
+          px[i + 1] = 34;
+          px[i + 2] = 55;
+        }
+        px[i + 3] = 255;
+        return;
+      }
+      px[i + 3] = 0;
+    });
+
+    refineMatte(img, {
+      maxEdge: 1280,
+      alphaKill: 96,
+      alphaSolid: 208,
+      edgeTrim: 1,
+      peelDark: true,
+      haloTrim: 0,
+      skipPaleDonors: false,
+      stripHanger: false,
+    });
+
+    const hole = (46 * 160 + 80) * 4;
+    assert.equal(img.data[hole + 3], 0);
+    const stitch = (90 * 160 + 24) * 4;
+    assert.equal(img.data[stitch + 3], 255);
+    const cloth = (110 * 160 + 80) * 4;
+    assert.equal(img.data[cloth + 3], 255);
+    const waistStitch = (36 * 160 + 50) * 4;
+    assert.equal(img.data[waistStitch + 3], 255);
+  });
+
   it("does not peel a black garment down to nothing", () => {
     const img = makeImageData(100, 80, (x, y, px, i) => {
       if (x >= 8 && x <= 91 && y >= 8 && y <= 71) {
