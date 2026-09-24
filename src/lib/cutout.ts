@@ -30,25 +30,35 @@ type CutProfile = {
   alphaSolid: number;
   /** Erode opaque alpha by this many px before rebuild (kills fringe). */
   edgeTrim: number;
+  /** Peel a dark rim that is darker than the cloth behind it (olive hems). */
+  peelDark: boolean;
   stripHanger: boolean;
 };
 
 const PROFILES: Record<CutMode, CutProfile> = {
   garment: {
     maxEdge: 1280,
-    alphaKill: 56,
-    alphaSolid: 200,
+    // Mid-alpha fringe used to be locked solid (halo). Kill more of it.
+    alphaKill: 96,
+    alphaSolid: 208,
     edgeTrim: 1,
+    peelDark: true,
     stripHanger: true,
   },
   product: {
     maxEdge: 1600,
-    alphaKill: 72,
-    alphaSolid: 220,
-    edgeTrim: 2,
+    // Same fringe kill as clothes. No choke: a 1–2px trim ate soft
+    // bottle silhouettes and the label ring around them.
+    alphaKill: 96,
+    alphaSolid: 208,
+    edgeTrim: 0,
+    peelDark: false,
     stripHanger: false,
   },
 };
+
+/** Transparent margin kept around a new cut, as a fraction of the subject. */
+export const CUT_PAD = 0.05;
 
 let cutterWarm = false;
 let preloadP: Promise<void> | null = null;
@@ -112,6 +122,11 @@ export function needsCutout(src: string): boolean {
   if (src.startsWith("blob:")) return false;
   if (src.startsWith("data:image/png")) return false;
   return true;
+}
+
+/** Apply the garment or product matte to pixels already on screen. */
+export function hardenMatte(img: ImageData, mode: CutMode): void {
+  refineMatte(img, PROFILES[mode]);
 }
 
 /** Closet / garment photos. */
@@ -302,37 +317,54 @@ async function shrinkForCut(file: File, maxEdge: number): Promise<Blob> {
   return blob ?? file;
 }
 
+function nearWhite(r: number, g: number, b: number): boolean {
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const sat = mx === 0 ? 0 : (mx - mn) / mx;
+  return mx / 255 > 0.8 && sat < 0.12;
+}
+
+function touchesClear(alpha: Uint8Array, w: number, h: number, idx: number): boolean {
+  const x = idx % w;
+  const y = (idx / w) | 0;
+  if (x === 0 || y === 0 || x === w - 1 || y === h - 1) return true;
+  return (
+    alpha[idx - 1]! < 18 ||
+    alpha[idx + 1]! < 18 ||
+    alpha[idx - w]! < 18 ||
+    alpha[idx + w]! < 18
+  );
+}
+
 /**
  * Harden the matte so tiles never show fuzzy halos:
  * kill weak alpha, solidify the rest, trim edge fringe, defringe RGB.
+ * Interior whites (shirts, labels) stay; only fringe-white is removed.
  */
 export function refineMatte(img: ImageData, profile: CutProfile): void {
   const px = img.data;
   const w = img.width;
   const h = img.height;
   const n = w * h;
+  const alpha0 = new Uint8Array(n);
+  for (let i = 0; i < n; i++) alpha0[i] = px[i * 4 + 3]!;
 
-  // 1) Soft white / gray matte → transparent (never eat solid opaque whites).
-  for (let i = 0; i < px.length; i += 4) {
-    const a = px[i + 3];
-    if (a === 0 || a >= 248) continue;
-    const r = px[i];
-    const g = px[i + 1];
-    const b = px[i + 2];
-    const mx = Math.max(r, g, b);
-    const mn = Math.min(r, g, b);
-    const sat = mx === 0 ? 0 : (mx - mn) / mx;
-    if (mx / 255 > 0.78 && sat < 0.12 && a < profile.alphaSolid) {
-      px[i + 3] = 0;
+  // 1) White / gray fringe → transparent. Do not eat interior white fabric.
+  for (let i = 0; i < n; i++) {
+    const a = alpha0[i]!;
+    if (a === 0 || a >= 248 || a >= profile.alphaSolid) continue;
+    const o = i * 4;
+    if (!nearWhite(px[o]!, px[o + 1]!, px[o + 2]!)) continue;
+    if (a < profile.alphaKill || touchesClear(alpha0, w, h, i)) {
+      px[o + 3] = 0;
     }
   }
 
-  // 2) Binary-ish alpha: kill fringe, solidify subject.
+  // 2) Binary alpha. Anything that survives is solid — leftover mid-alpha is the halo.
   for (let i = 3; i < px.length; i += 4) {
-    const a = px[i];
+    const a = px[i]!;
     if (a === 0) continue;
-    if (a < profile.alphaKill) px[i] = 0;
-    else if (a < profile.alphaSolid) px[i] = 255;
+    px[i] = a < profile.alphaKill ? 0 : 255;
   }
 
   // 3) Morphological edge trim — drop pixels that sit on the transparent border.
@@ -364,8 +396,146 @@ export function refineMatte(img: ImageData, profile: CutProfile): void {
     }
   }
 
-  // 4) Color decontamination on the remaining edge ring.
+  // 4) Olive / soft hems keep a dark band that binarize locks in. Peel it.
+  if (profile.peelDark) peelDarkRim(img);
+
+  // 5) Color decontamination on the remaining edge ring.
   defringeRgb(img);
+}
+
+/**
+ * Drop a near-black hem fringe that is darker than the cloth inside.
+ * The olive gym-short halo is a band of almost-black pixels, not a 1px
+ * edge, so each pass clears a band. Only pixels darker than `ceil` can
+ * go, and only when the cloth behind them is lighter than dark denim.
+ * Shaded khaki, black clothes, and indigo seams stay.
+ */
+function peelDarkRim(img: ImageData): void {
+  const w = img.width;
+  const h = img.height;
+  const px = img.data;
+  const n = w * h;
+  if (w < 48 || h < 48) return;
+
+  const lum = new Float32Array(n);
+  const opaque = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    lum[i] = 0.2126 * px[o]! + 0.7152 * px[o + 1]! + 0.0722 * px[o + 2]!;
+    opaque[i] = px[o + 3]! >= 128 ? 1 : 0;
+  }
+
+  const erodeN = 16;
+  const band = 8;
+  const passes = 4;
+  const gap = 12;
+  const rad = 16;
+  const ceil = 40;
+  // Denim sits near 36. Lighter waistband threads were lifting the local
+  // average to about 62, so belt-loop and seam shadows got peeled and the
+  // studio plate showed through as white speckles and a filled waist.
+  // Olive cloth is about 68, so only peel when the cloth is at least this.
+  const clothMin = 64;
+  const stride = w + 1;
+  const bufA = new Uint8Array(n);
+  const bufB = new Uint8Array(n);
+  const deep = new Uint8Array(n);
+  const iL = new Float64Array(stride * (h + 1));
+  const iM = new Float64Array(stride * (h + 1));
+
+  for (let pass = 0; pass < passes; pass++) {
+    const core = erodeMask(opaque, erodeN, w, h, bufA, bufB);
+    deep.set(core);
+    let deepCount = 0;
+    for (let i = 0; i < n; i++) deepCount += deep[i]!;
+    if (deepCount < 200) break;
+
+    const inner = erodeMask(opaque, band, w, h, bufA, bufB);
+
+    iL.fill(0);
+    iM.fill(0);
+    for (let y = 0; y < h; y++) {
+      let runL = 0;
+      let runM = 0;
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        const m = deep[row + x]!;
+        runL += lum[row + x]! * m;
+        runM += m;
+        const p = (y + 1) * stride + (x + 1);
+        const above = y * stride + (x + 1);
+        iL[p] = iL[above]! + runL;
+        iM[p] = iM[above]! + runM;
+      }
+    }
+
+    let killed = 0;
+    const kill = new Uint8Array(n);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        if (!opaque[i] || inner[i]) continue;
+        const pix = lum[i]!;
+        if (pix >= ceil) continue;
+        const y0 = Math.max(0, y - rad);
+        const y1 = Math.min(h, y + rad + 1);
+        const x0 = Math.max(0, x - rad);
+        const x1 = Math.min(w, x + rad + 1);
+        const sM =
+          iM[y1 * stride + x1]! -
+          iM[y0 * stride + x1]! -
+          iM[y1 * stride + x0]! +
+          iM[y0 * stride + x0]!;
+        if (sM < 8) continue;
+        const sL =
+          iL[y1 * stride + x1]! -
+          iL[y0 * stride + x1]! -
+          iL[y1 * stride + x0]! +
+          iL[y0 * stride + x0]!;
+        const cloth = sL / sM;
+        if (pix + gap < cloth && cloth >= clothMin) {
+          kill[i] = 1;
+          killed++;
+        }
+      }
+    }
+    if (killed < 24) break;
+    for (let i = 0; i < n; i++) {
+      if (!kill[i]) continue;
+      px[i * 4 + 3] = 0;
+      opaque[i] = 0;
+    }
+  }
+}
+
+/** Copy of `src` eroded `times` steps. Does not mutate `src`. */
+function erodeMask(
+  src: Uint8Array,
+  times: number,
+  w: number,
+  h: number,
+  bufA: Uint8Array,
+  bufB: Uint8Array,
+): Uint8Array {
+  bufA.set(src);
+  let cur = bufA;
+  let nxt = bufB;
+  for (let e = 0; e < times; e++) {
+    nxt.fill(0);
+    for (let y = 1; y < h - 1; y++) {
+      const row = y * w;
+      for (let x = 1; x < w - 1; x++) {
+        const i = row + x;
+        if (cur[i] && cur[i - 1] && cur[i + 1] && cur[i - w] && cur[i + w]) {
+          nxt[i] = 1;
+        }
+      }
+    }
+    const swap = cur;
+    cur = nxt;
+    nxt = swap;
+  }
+  return cur;
 }
 
 function defringeRgb(img: ImageData): void {
@@ -652,6 +822,59 @@ function stripHanger(img: ImageData): void {
   }
 }
 
+/**
+ * Inclusive subject bounds → exclusive crop rect with a small even margin.
+ * Clamps to the bitmap so a subject already on the edge is not shifted.
+ */
+export function frameCutBounds(
+  imgW: number,
+  imgH: number,
+  bounds: { x0: number; y0: number; x1: number; y1: number },
+  padRatio = CUT_PAD,
+): { x0: number; y0: number; x1: number; y1: number } {
+  const span = Math.max(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
+  const pad = Math.max(2, Math.round(span * padRatio));
+  return {
+    x0: Math.max(0, bounds.x0 - pad),
+    y0: Math.max(0, bounds.y0 - pad),
+    x1: Math.min(imgW, bounds.x1 + pad + 1),
+    y1: Math.min(imgH, bounds.y1 + pad + 1),
+  };
+}
+
+/**
+ * When a cutout has a large empty margin, return the image rect to show
+ * so the subject isn't a tiny stamp. Tight cuts return null (CSS inset is enough).
+ * Bounds are inclusive pixel indexes.
+ */
+export function trimSubjectView(
+  imgW: number,
+  imgH: number,
+  bounds: { x0: number; y0: number; x1: number; y1: number },
+  maxMargin = 0.12,
+  padRatio = 0.06,
+): { x: number; y: number; w: number; h: number } | null {
+  if (imgW < 2 || imgH < 2) return null;
+  const bw = bounds.x1 - bounds.x0 + 1;
+  const bh = bounds.y1 - bounds.y0 + 1;
+  if (bw < 2 || bh < 2) return null;
+  const marginL = bounds.x0 / imgW;
+  const marginR = (imgW - 1 - bounds.x1) / imgW;
+  const marginT = bounds.y0 / imgH;
+  const marginB = (imgH - 1 - bounds.y1) / imgH;
+  if (Math.max(marginL, marginR, marginT, marginB) <= maxMargin) return null;
+  const pad = Math.max(bw, bh) * padRatio;
+  const x = Math.max(0, Math.floor(bounds.x0 - pad));
+  const y = Math.max(0, Math.floor(bounds.y0 - pad));
+  const right = Math.min(imgW, Math.ceil(bounds.x1 + 1 + pad));
+  const bottom = Math.min(imgH, Math.ceil(bounds.y1 + 1 + pad));
+  const w = right - x;
+  const h = bottom - y;
+  if (w < 2 || h < 2) return null;
+  if (w >= imgW - 1 && h >= imgH - 1) return null;
+  return { x, y, w, h };
+}
+
 async function cropIsolate(
   src: HTMLCanvasElement,
   data: ImageData,
@@ -671,11 +894,11 @@ async function cropIsolate(
     }
   }
   if (x1 <= x0 || y1 <= y0) throw new Error("No garment in the cut");
-  const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04);
-  x0 = Math.max(0, x0 - pad);
-  y0 = Math.max(0, y0 - pad);
-  x1 = Math.min(src.width, x1 + pad + 1);
-  y1 = Math.min(src.height, y1 + pad + 1);
+  const framed = frameCutBounds(src.width, src.height, { x0, y0, x1, y1 });
+  x0 = framed.x0;
+  y0 = framed.y0;
+  x1 = framed.x1;
+  y1 = framed.y1;
   const cw = x1 - x0;
   const ch = y1 - y0;
   const scale = Math.min(1, 1400 / Math.max(cw, ch));
@@ -761,12 +984,13 @@ export function knockBackground(img: HTMLImageElement, maxEdge = 1400): string {
     tryPush(x, y - 1);
     tryPush(x, y + 1);
   }
-  // Harden the flood-fill matte the same way product cuts do.
+  // Harden the flood-fill matte the same way garment cuts do.
   refineMatte(data, {
     maxEdge,
-    alphaKill: 64,
-    alphaSolid: 210,
+    alphaKill: 96,
+    alphaSolid: 208,
     edgeTrim: 1,
+    peelDark: true,
     stripHanger: false,
   });
   ctx.putImageData(data, 0, 0);
