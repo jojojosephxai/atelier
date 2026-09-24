@@ -5,7 +5,7 @@ import { LookBoard } from "@/components/look-board";
 import { Button } from "@/components/ui/button";
 import { Field, NativeSelect, Textarea } from "@/components/ui/field";
 import { composeLooks } from "@/lib/engine";
-import { likedGarmentIds, skippedLookKeys } from "@/lib/look";
+import { comboKey, likedGarmentIds, skippedLookKeys } from "@/lib/look";
 import { ROUTINES, currentSeason, type RoutineId } from "@/lib/routines";
 import { useWardrobe } from "@/lib/store";
 import type {
@@ -210,7 +210,7 @@ function StylistPage() {
           <div className="looks-cols">
             {results.map((look) => {
               const saved = looks.find(
-                (l) => l.garmentIds.join() === look.garmentIds.join(),
+                (l) => comboKey(l.garmentIds) === comboKey(look.garmentIds),
               );
               return (
                 <LookBoard
