@@ -1,1 +1,1 @@
-PLACEHOLDER_WILL_FAIL
+/tmp/cutout-main.ts
