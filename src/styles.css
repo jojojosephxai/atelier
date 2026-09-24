@@ -825,6 +825,20 @@ html[data-theme="dark"] {
     .looks-cols {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+
+    /* Wide screens: same card width as Today. Narrower screens keep the Looks grid. */
+    .stylist-results {
+      box-sizing: border-box;
+      width: 100vw;
+      max-width: 100vw;
+      margin-inline: calc(50% - 50vw);
+      padding-inline: 1.75rem;
+    }
+
+    .stylist-results .looks-cols {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      column-gap: 0.5rem;
+    }
   }
 
   .looks-cols > * {

@@ -198,7 +198,7 @@ function StylistPage() {
       </section>
 
       {results.length ? (
-        <section className="space-y-4">
+        <section className="stylist-results space-y-4">
           <h2 className="font-display text-3xl text-fg">Three looks</h2>
           <div className="looks-cols">
             {results.map((look) => {
