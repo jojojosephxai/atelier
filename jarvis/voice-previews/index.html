@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jarvis voice check — edge-tts</title>
+    <style>
+      :root {
+        --bg: #040a12;
+        --cyan: #5ce1ff;
+        --muted: #8aa4b8;
+        --panel: rgba(12, 28, 44, 0.85);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Rajdhani", "Segoe UI", sans-serif;
+        color: #e8f6ff;
+        background:
+          radial-gradient(ellipse at 20% 0%, #0a2a3d 0%, transparent 50%),
+          radial-gradient(ellipse at 80% 100%, #061820 0%, transparent 45%),
+          var(--bg);
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+      }
+      main {
+        width: min(520px, 100%);
+        background: var(--panel);
+        border: 1px solid rgba(92, 225, 255, 0.25);
+        padding: 1.75rem 1.5rem 1.5rem;
+      }
+      h1 {
+        font-family: Orbitron, Rajdhani, sans-serif;
+        font-size: 1.15rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--cyan);
+        margin: 0 0 0.4rem;
+      }
+      p {
+        margin: 0 0 1.25rem;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .clip {
+        border-top: 1px solid rgba(92, 225, 255, 0.15);
+        padding: 1rem 0;
+      }
+      .clip:last-child {
+        padding-bottom: 0;
+      }
+      .clip strong {
+        display: block;
+        margin-bottom: 0.35rem;
+        letter-spacing: 0.04em;
+      }
+      .clip span {
+        display: block;
+        font-size: 0.9rem;
+        color: var(--muted);
+        margin-bottom: 0.65rem;
+      }
+      audio {
+        width: 100%;
+      }
+      a {
+        color: var(--cyan);
+      }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main>
+      <h1>Jarvis voice check</h1>
+      <p>
+        Free Microsoft Edge voices (no paid ElevenLabs). Play each clip — pick the one that
+        feels most like movie Jarvis. Recommended default: <strong>Ryan</strong> (slightly
+        slower).
+      </p>
+
+      <div class="clip">
+        <strong>1 · Ryan (normal)</strong>
+        <span>en-GB-RyanNeural — calm British male</span>
+        <audio controls src="./ryan-sample.mp3"></audio>
+      </div>
+
+      <div class="clip">
+        <strong>2 · Ryan (slower — more Jarvis)</strong>
+        <span>Same voice, −8% speed — often sounds more “butler”</span>
+        <audio controls src="./ryan-slower.mp3"></audio>
+      </div>
+
+      <div class="clip">
+        <strong>3 · Thomas</strong>
+        <span>en-GB-ThomasNeural — alternate British male</span>
+        <audio controls src="./thomas-sample.mp3"></audio>
+      </div>
+
+      <p style="margin-top: 1.25rem; margin-bottom: 0; font-size: 0.9rem">
+        Back to HUD: run <code>npm run jarvis</code> →
+        <a href="http://localhost:8787">localhost:8787</a>
+      </p>
+    </main>
+  </body>
+</html>
