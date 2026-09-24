@@ -9,6 +9,7 @@ import { climateKit, isCampusJacket, isGymLayer, lookEligible, lookName, boardWh
 import { exportLookKitGrid, type KitExportResult } from "@/lib/kit-grid-export";
 import { lookCardModel } from "@/lib/look-card";
 import { whyForSet, whyPrimaryKey } from "@/lib/why-compose";
+import { commitDislikeVotes, dislikeCombos } from "@/lib/dislike-confirm";
 import { comboKey, lookCoreKey } from "@/lib/look";
 import {
   closetSig,
@@ -58,6 +59,7 @@ function LookRemoveOverlay({
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const onCancelRef = useRef(onCancel);
+  const busy = useRef(false);
   onCancelRef.current = onCancel;
 
   useEffect(() => {
@@ -70,6 +72,17 @@ function LookRemoveOverlay({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  function confirm(event: { preventDefault: () => void; stopPropagation: () => void }) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy.current) return;
+    busy.current = true;
+    onConfirm();
+    window.setTimeout(() => {
+      busy.current = false;
+    }, 450);
+  }
 
   return (
     <div
@@ -90,7 +103,8 @@ function LookRemoveOverlay({
           ref={confirmRef}
           type="button"
           className="look-kit-remove-confirm"
-          onClick={onConfirm}
+          onPointerDown={confirm}
+          onClick={confirm}
         >
           Confirm
         </button>
@@ -628,7 +642,22 @@ function StartPage() {
                   <LookRemoveOverlay
                     onCancel={() => setPendingRemoveKey(null)}
                     onConfirm={() => {
-                      castThumb(pieces, -1, "commit");
+                      const shownIds = pieces.map((g) => g.id);
+                      setProfile({
+                        lookVotes: commitDislikeVotes(
+                          votes,
+                          dislikeCombos(shownIds, look.garmentIds),
+                          {
+                            occasion: routine,
+                            climate,
+                            whyKey: whyPrimaryKey(pieces, routine, climate),
+                            at: Date.now(),
+                            gen: lookRegen,
+                            closetSig: closetSig(garments),
+                          },
+                        ),
+                      });
+                      onRemoveCard(pieces, look);
                       setPendingRemoveKey(null);
                     }}
                   />

@@ -1,3 +1,4 @@
+import { dislikeSkipsPreset } from "./dislike-confirm";
 import { composeLooks } from "./engine";
 import {
   comboKey,
@@ -140,9 +141,10 @@ export function readyLooks(
     for (const kit of preset) {
       if (picked.length >= 3) break;
       const look = decorate(asKit(kit));
-      if (!allowSuppressed && suppressed(look)) continue;
       const key =
         coreKey(look.garmentIds, garments) || comboKey(look.garmentIds);
+      if (dislikeSkipsPreset(look.garmentIds, garments, skip)) continue;
+      if (!allowSuppressed && suppressed(look)) continue;
       if (key && seen.has(key)) continue;
       if (key) seen.add(key);
       picked.push(look);
