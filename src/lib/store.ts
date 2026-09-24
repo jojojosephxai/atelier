@@ -126,10 +126,23 @@ function normalizeGarment(g: Garment): Garment {
   });
 }
 
+const FINISH_IDS = new Set([
+  "e_bergamot",
+  "e_vetiver",
+  "e_tonka",
+  "e_clay",
+  "e_balm",
+]);
+
 function normalizeExtra(e: Extra): Extra {
   const sample = createSampleCloset().extras.find((x) => x.id === e.id);
   const catalog = sample && SAMPLE_IMAGES[e.id]
     ? { name: sample.name, brand: sample.brand }
+    : null;
+  // Fragrance & finish names live on the bottle. Refresh the demo copy
+  // so an older saved closet picks up the on-pack title.
+  const finish = sample && FINISH_IDS.has(e.id)
+    ? { notes: sample.notes, kind: sample.kind, family: sample.family }
     : null;
   return bindPhotoFields({
     ...e,
@@ -138,6 +151,7 @@ function normalizeExtra(e: Extra): Extra {
     slot: e.slot ?? sample?.slot,
     step: e.step ?? sample?.step,
     kind: e.kind ?? sample?.kind ?? "skincare",
+    ...finish,
   });
 }
 

@@ -128,7 +128,7 @@ def main() -> None:
     retinol = knock_white(load(ROOT / "artifacts/searched_images/OhgPB.jpg"))
     bergamot = knock_white(load(ROOT / "artifacts/searched_images/P7O1a.jpg"))
     vetiver = knock_white(load(ROOT / "artifacts/searched_images/f018u.jpg"))
-    balm = knock_white(load(ROOT / "public/sample/cut/lelabo-beard.webp"))
+    balm = knock_white(load(ROOT / "public/sample/cut/santal-33.webp"))
     night = load(ROOT / "artifacts/imagine_images/67360e07-11cd-48ef-a706-645ac97a5a0c.jpg")
     tonka = tonka_catalog()
     clay = clay_closed()
