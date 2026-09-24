@@ -541,18 +541,19 @@ html[data-theme="dark"] {
   .look-kit-remove-scrim {
     position: absolute;
     inset: 0;
+    z-index: 0;
     margin: 0;
     padding: 0;
     border: 0;
     border-radius: inherit;
-    background: color-mix(in oklab, var(--atelier-bg) 58%, transparent);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: color-mix(in oklab, var(--atelier-bg) 86%, transparent);
+    backdrop-filter: blur(24px) saturate(1.25);
+    -webkit-backdrop-filter: blur(24px) saturate(1.25);
   }
 
   .look-kit-remove-copy {
     position: relative;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -562,15 +563,19 @@ html[data-theme="dark"] {
 
   .look-kit-remove-title {
     margin: 0;
-    font-family: var(--font-display);
-    font-style: italic;
+    font-family: var(--font-sans);
+    font-style: normal;
     font-weight: 500;
-    font-size: 2.75rem;
-    line-height: 0.9;
+    font-size: 1.5rem;
+    letter-spacing: 0.01em;
+    line-height: 1.15;
     color: var(--atelier-fg);
+    pointer-events: none;
   }
 
   .look-kit-remove-confirm {
+    position: relative;
+    z-index: 1;
     pointer-events: auto;
     box-sizing: border-box;
     min-height: 44px;
@@ -582,7 +587,9 @@ html[data-theme="dark"] {
     color: var(--atelier-accent-fg);
     font-family: var(--font-sans);
     font-size: 0.9375rem;
+    font-weight: 500;
     line-height: 1;
+    touch-action: manipulation;
   }
 
   .intro-pill {
