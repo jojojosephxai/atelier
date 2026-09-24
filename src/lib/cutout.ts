@@ -1,1 +1,1 @@
-/tmp/cutout-main.ts
+@file:/tmp/cutout-main.ts
