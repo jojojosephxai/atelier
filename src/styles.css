@@ -355,18 +355,6 @@ html[data-theme="dark"] {
     }
   }
 
-  /* Exactly four tiles → 2×2 (overrides wider 3/4/5-col rules). */
-  .groom-grid:has(> :nth-child(4):last-child) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  @media (min-width: 56rem) {
-    .groom-split .groom-grid:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.65rem;
-    }
-  }
-
   .today-page {
     width: 100%;
     max-width: none;

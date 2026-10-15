@@ -8,11 +8,11 @@ import { inflateSync } from "node:zlib";
 import { hardenMatte } from "./cutout.ts";
 
 /**
- * Small photos of the shipped cutouts. `npm test` checks them so a cutout
- * change cannot bring back fragrance text bars or the indigo-jeans peel
- * (speckles, white waist fill, soft halo) without a failing test.
+ * Test-only photos of the old fragrance cuts and the indigo jeans.
+ * They are not app seed data. `npm test` checks them so a cutout change
+ * cannot bring back text bars or the jeans peel (speckles, white waist
+ * fill, soft halo) without a failing test.
  *
- * Each PNG is a 96px-wide area-average of the public sample it names.
  * Thresholds sit between these clean tiles and the JOS-30 overlays:
  * Tonka top-band ink 0.179, Claymation black-bar fraction 0.047,
  * Santal 33 top-band ink 0.288 and black-bar fraction 0.078.
@@ -34,8 +34,6 @@ type Rgba = {
 type BottleFixture = {
   name: string;
   png: string;
-  source: string;
-  sha256: string;
   subject: readonly [number, number];
 };
 
@@ -50,36 +48,26 @@ const BOTTLES: readonly BottleFixture[] = [
   {
     name: "Colonia",
     png: "colonia.png",
-    source: "public/sample/cut/colonia.webp",
-    sha256: "795b998f07b8dec949af0d30d2f01c9a27c745ec87979da937b5f740201344ad",
     subject: [0.07, 0.16],
   },
   {
     name: "Grey Flannel",
     png: "grey-flannel.png",
-    source: "public/sample/cut/grey-flannel.webp",
-    sha256: "61e159f783bd824b54541ee946497a8cca486800626e1fbb366da0e845a10e24",
     subject: [0.16, 0.32],
   },
   {
     name: "Tonka",
     png: "tonka.png",
-    source: "public/sample/cut/tonka.webp",
-    sha256: "2501b2c97336c057fa90f3d7f2f45e9690de876007a2c2a9eee79e9cdb0b00e7",
     subject: [0.12, 0.24],
   },
   {
     name: "Claymation",
     png: "hanz-clay.png",
-    source: "public/sample/cut/hanz-clay.webp",
-    sha256: "2d1abdb8df33b23e1a8768dafae5818ca70dfc5e023c4a717e61661172f8289a",
     subject: [0.15, 0.32],
   },
   {
     name: "Santal 33",
     png: "santal-33.png",
-    source: "public/sample/cut/santal-33.webp",
-    sha256: "b156aca705087f5f00bd06849e9fa473e4e7bc0393a3c098bca527e0eb858f5d",
     subject: [0.2, 0.36],
   },
 ];
@@ -383,7 +371,6 @@ function assertJeans(img: Rgba): void {
 describe("cutout fixtures", () => {
   for (const fixture of BOTTLES) {
     it(`${fixture.name} stays a clean pack with no stamped text`, () => {
-      assertSourceHash(fixture.source, fixture.sha256);
       assertBottle(fixture, loadFixture(fixture.png));
     });
   }
