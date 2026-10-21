@@ -353,6 +353,12 @@ html[data-theme="dark"] {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0.75rem;
     }
+
+    /* Keep three-column tile widths in both routines, arranged as 2×2 for four. */
+    .groom-split:has(.groom-grid > :nth-child(4):last-child) .groom-grid {
+      grid-template-columns: repeat(2, calc((100% - 2 * 0.75rem) / 3));
+      justify-content: start;
+    }
   }
 
   .today-page {
