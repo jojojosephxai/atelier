@@ -127,7 +127,7 @@ function GroomingPage() {
               <h2 className="font-display text-3xl leading-none text-fg italic">
                 Day
               </h2>
-              <div className="groom-grid mt-3">
+              <div className="groom-grid groom-routine mt-3">
                 {day.map((e, i) => (
                   <ExtraCard
                     key={`am-${e.id}`}
@@ -145,7 +145,7 @@ function GroomingPage() {
               <h2 className="font-display text-3xl leading-none text-fg italic">
                 Night
               </h2>
-              <div className="groom-grid mt-3">
+              <div className="groom-grid groom-routine mt-3">
                 {night.map((e, i) => (
                   <ExtraCard
                     key={`pm-${e.id}`}
