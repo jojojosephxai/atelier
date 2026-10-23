@@ -126,7 +126,8 @@ function normalizeGarment(g: Garment): Garment {
   });
 }
 
-const FINISH_IDS = new Set([
+/** Demo bottles Joseph asked to drop. A saved closet still had these ids. */
+const RETIRED_EXTRA_IDS = new Set([
   "e_bergamot",
   "e_vetiver",
   "e_tonka",
@@ -139,11 +140,6 @@ function normalizeExtra(e: Extra): Extra {
   const catalog = sample && SAMPLE_IMAGES[e.id]
     ? { name: sample.name, brand: sample.brand }
     : null;
-  // Fragrance & finish names live on the bottle. Refresh the demo copy
-  // so an older saved closet picks up the on-pack title.
-  const finish = sample && FINISH_IDS.has(e.id)
-    ? { notes: sample.notes, kind: sample.kind, family: sample.family }
-    : null;
   return bindPhotoFields({
     ...e,
     ...catalog,
@@ -151,7 +147,22 @@ function normalizeExtra(e: Extra): Extra {
     slot: e.slot ?? sample?.slot,
     step: e.step ?? sample?.step,
     kind: e.kind ?? sample?.kind ?? "skincare",
-    ...finish,
+  });
+}
+
+function presentExtras(extras: Extra[]): Extra[] {
+  return extras
+    .filter((e) => !RETIRED_EXTRA_IDS.has(e.id))
+    .map(normalizeExtra);
+}
+
+function dropRetiredExtraIds(looks: Look[]): Look[] {
+  return looks.map((look) => {
+    if (!look.extraIds.some((id) => RETIRED_EXTRA_IDS.has(id))) return look;
+    return {
+      ...look,
+      extraIds: look.extraIds.filter((id) => !RETIRED_EXTRA_IDS.has(id)),
+    };
   });
 }
 
@@ -196,7 +207,7 @@ export const useWardrobe = create<WardrobeState>()(
   persist(
     (set, get) => ({
       garments: SAMPLE.garments.map(normalizeGarment),
-      extras: SAMPLE.extras.map(normalizeExtra),
+      extras: presentExtras(SAMPLE.extras),
       looks: SAMPLE.looks,
       profile: emptyProfile,
       seeded: true,
@@ -308,8 +319,8 @@ export const useWardrobe = create<WardrobeState>()(
         const sample = createSampleCloset();
         set({
           garments: sample.garments.map(normalizeGarment),
-          extras: sample.extras.map(normalizeExtra),
-          looks: sample.looks,
+          extras: presentExtras(sample.extras),
+          looks: dropRetiredExtraIds(sample.looks),
           profile: { ...get().profile, wornLog: [], skipDemo: false },
           seeded: true,
         });
@@ -318,8 +329,8 @@ export const useWardrobe = create<WardrobeState>()(
       replaceAll: (data) =>
         set({
           garments: data.garments.map(normalizeGarment),
-          extras: data.extras.map(normalizeExtra),
-          looks: data.looks,
+          extras: presentExtras(data.extras),
+          looks: dropRetiredExtraIds(data.looks),
           profile: normalizeProfile(data.profile),
           seeded: true,
         }),
@@ -408,16 +419,16 @@ export function useHydrated(): boolean {
       } else if (state.profile.skipDemo) {
         useWardrobe.setState({
           garments: state.garments.map(normalizeGarment),
-          extras: state.extras.map(normalizeExtra),
+          extras: presentExtras(state.extras),
           profile: normalizeProfile(state.profile),
-          looks: state.looks,
+          looks: dropRetiredExtraIds(state.looks),
         });
       } else {
         useWardrobe.setState({
           garments: ensureSampleGarments(state.garments.map(normalizeGarment)),
-          extras: state.extras.map(normalizeExtra),
+          extras: presentExtras(state.extras),
           profile: normalizeProfile(state.profile),
-          looks: ensureSampleLooks(state),
+          looks: dropRetiredExtraIds(ensureSampleLooks(state)),
         });
       }
       const bound = useWardrobe.getState();

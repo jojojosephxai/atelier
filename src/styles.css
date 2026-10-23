@@ -355,15 +355,73 @@ html[data-theme="dark"] {
     }
   }
 
-  /* Exactly four tiles → 2×2 (overrides wider 3/4/5-col rules). */
-  .groom-grid:has(> :nth-child(4):last-child) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Balance each routine independently while preserving its base tile width. */
+  .groom-grid.groom-routine {
+    --groom-base: 3;
+    --groom-cols: 3;
+    --groom-gap: 0.45rem;
+    grid-template-columns: repeat(var(--groom-cols), calc((100% - (var(--groom-base) - 1) * var(--groom-gap)) / var(--groom-base)));
+    justify-content: start;
+    gap: var(--groom-gap);
+  }
+
+  @media (width < 70rem) {
+    .groom-routine:has(> :nth-child(4):last-child) {
+      --groom-cols: 2;
+    }
+  }
+
+  @media (min-width: 48rem) {
+    .groom-grid.groom-routine {
+      --groom-gap: 0.65rem;
+    }
+  }
+
+  @media (70rem <= width < 90rem) {
+    .groom-grid.groom-routine {
+      --groom-base: 4;
+      --groom-cols: 4;
+    }
+
+    .groom-routine:not(.groom-split *):has(> :nth-child(5):last-child),
+    .groom-routine:not(.groom-split *):has(> :nth-child(9):last-child) {
+      --groom-cols: 3;
+    }
+  }
+
+  @media (min-width: 70rem) {
+    .groom-grid.groom-routine {
+      --groom-gap: 0.75rem;
+    }
+  }
+
+  @media (min-width: 90rem) {
+    .groom-grid.groom-routine {
+      --groom-base: 5;
+      --groom-cols: 5;
+    }
+
+    .groom-routine:not(.groom-split *):has(> :nth-child(6):last-child),
+    .groom-routine:not(.groom-split *):has(> :nth-child(11):last-child) {
+      --groom-cols: 4;
+    }
   }
 
   @media (min-width: 56rem) {
-    .groom-split .groom-grid:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.65rem;
+    .groom-split .groom-routine {
+      --groom-base: 3;
+      --groom-cols: 3;
+      --groom-gap: 0.65rem;
+    }
+
+    .groom-split .groom-routine:has(> :nth-child(4):last-child) {
+      --groom-cols: 2;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    .groom-split .groom-routine {
+      --groom-gap: 0.75rem;
     }
   }
 

@@ -116,7 +116,9 @@ function GroomingPage() {
         </Button>
       </header>
 
-      {empty ? <p className="text-sm text-muted">No steps yet.</p> : null}
+      {empty ? (
+        <p className="text-sm text-muted">No steps yet.</p>
+      ) : null}
 
       {hasSkin ? (
         <div className={cn(when === "both" ? "groom-split" : "")}>
@@ -125,7 +127,7 @@ function GroomingPage() {
               <h2 className="font-display text-3xl leading-none text-fg italic">
                 Day
               </h2>
-              <div className="groom-grid mt-3">
+              <div className="groom-grid groom-routine mt-3">
                 {day.map((e, i) => (
                   <ExtraCard
                     key={`am-${e.id}`}
@@ -143,7 +145,7 @@ function GroomingPage() {
               <h2 className="font-display text-3xl leading-none text-fg italic">
                 Night
               </h2>
-              <div className="groom-grid mt-3">
+              <div className="groom-grid groom-routine mt-3">
                 {night.map((e, i) => (
                   <ExtraCard
                     key={`pm-${e.id}`}
@@ -159,11 +161,11 @@ function GroomingPage() {
         </div>
       ) : null}
 
-      {bottles.length ? (
-        <section>
-          <h2 className="font-display text-3xl leading-none text-fg italic">
-            Fragrance & finish
-          </h2>
+      <section>
+        <h2 className="font-display text-3xl leading-none text-fg italic">
+          Fragrance & finish
+        </h2>
+        {bottles.length ? (
           <div className="groom-grid mt-3">
             {bottles.map((e, i) => (
               <ExtraCard
@@ -175,8 +177,18 @@ function GroomingPage() {
               />
             ))}
           </div>
-        </section>
-      ) : null}
+        ) : (
+          <div className="mt-3 max-w-sm">
+            <p className="text-sm text-muted">
+              No bottles yet. Add one when you have it.
+            </p>
+            <Button className="mt-3" onClick={openNew}>
+              <Plus className="size-4" />
+              Add piece
+            </Button>
+          </div>
+        )}
+      </section>
 
       {open ? (
         <ExtraFormDialog
